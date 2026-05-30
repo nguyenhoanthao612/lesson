@@ -1,0 +1,6 @@
+{
+  "name": "IC3 GS6 Teaching Platform",
+  "description": "A modern web application specifically for teaching IC3 GS6 certification courses, replacing PowerPoint presentations with interactive website lessons and projector slide shows.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

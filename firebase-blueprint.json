@@ -1,0 +1,58 @@
+{
+  "entities": {
+    "user": {
+      "title": "User",
+      "description": "Represents an authenticated educator profile.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique Google user ID" },
+        "name": { "type": "string", "description": "Educator's full display name" },
+        "email": { "type": "string", "format": "email", "description": "Educator's communication email" }
+      },
+      "required": ["uid", "name", "email"]
+    },
+    "lesson": {
+      "title": "Lesson",
+      "description": "Represents an IC3 course lesson created by the teacher, storing customizable pages and slide decks.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique primary key" },
+        "title": { "type": "string", "description": "The title of the lesson slide deck" },
+        "description": { "type": "string", "description": "Brief executive summary of the content" },
+        "category": { "type": "string", "enum": ["Computing Fundamentals", "Key Applications", "Living Online"] },
+        "topic": { "type": "string", "description": "Specific training objective topic" },
+        "thumbnailUrl": { "type": "string", "description": "Associated graphics thumbnail URL" },
+        "createdAt": { "type": "number", "description": "Creation epoch" },
+        "updatedAt": { "type": "number", "description": "Last modified epoch" },
+        "authorId": { "type": "string", "description": "UID of creating teacher" },
+        "authorEmail": { "type": "string", "description": "Email of creating teacher" }
+      },
+      "required": ["id", "title", "category", "createdAt", "updatedAt", "authorId", "authorEmail"]
+    },
+    "resource": {
+      "title": "Resource",
+      "description": "Represents a student manual, reference chart, or study asset.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier" },
+        "title": { "type": "string", "description": "The custom title assigned by the teacher" },
+        "fileName": { "type": "string", "description": "The exact name of the file" },
+        "fileUrl": { "type": "string", "description": "The location where the static copy resides" },
+        "fileType": { "type": "string", "enum": ["image", "pdf", "video", "other"] },
+        "category": { "type": "string", "enum": ["Computing Fundamentals", "Key Applications", "Living Online"] },
+        "createdAt": { "type": "number", "description": "Creation timestamp" }
+      },
+      "required": ["id", "title", "fileName", "fileUrl", "fileType", "category", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/lessons/{lessonId}": {
+      "schema": "lesson",
+      "description": "Primary repository for educational structures and slide segments."
+    },
+    "/resources/{resourceId}": {
+      "schema": "resource",
+      "description": "File references and classroom handouts."
+    }
+  }
+}

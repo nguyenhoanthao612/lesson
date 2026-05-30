@@ -1,0 +1,93 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global default-deny safety catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // Global Helper Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+    
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    // Lesson Validator
+    function isValidLesson(data) {
+      return data.id is string
+        && data.id.size() <= 128
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 200
+        && data.description is string
+        && data.description.size() <= 2000
+        && data.category is string
+        && (data.category == 'Computing Fundamentals' || data.category == 'Key Applications' || data.category == 'Living Online')
+        && data.topic is string
+        && data.topic.size() <= 200
+        && data.authorId == request.auth.uid;
+    }
+    
+    // FileResource Validator
+    function isValidResource(data) {
+      return data.id is string
+        && data.id.size() <= 128
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 200
+        && data.fileName is string
+        && data.fileName.size() <= 500
+        && data.fileUrl is string
+        && data.fileUrl.size() <= 2000
+        && data.fileType is string
+        && (data.fileType == 'image' || data.fileType == 'pdf' || data.fileType == 'video' || data.fileType == 'other')
+        && data.category is string
+        && (data.category == 'Computing Fundamentals' || data.category == 'Key Applications' || data.category == 'Living Online');
+    }
+
+    match /lessons/{lessonId} {
+      allow get: if isVerifiedUser();
+      allow list: if isVerifiedUser();
+      
+      allow create: if isVerifiedUser() 
+        && isValidId(lessonId) 
+        && isValidLesson(request.resource.data)
+        && request.resource.data.createdAt == request.time;
+        
+      allow update: if isVerifiedUser()
+        && isValidId(lessonId)
+        && isValidLesson(request.resource.data)
+        && request.resource.data.authorId == resource.data.authorId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+        
+      allow delete: if isVerifiedUser()
+        && resource.data.authorId == request.auth.uid;
+    }
+
+    match /resources/{resourceId} {
+      allow get: if isVerifiedUser();
+      allow list: if isVerifiedUser();
+      
+      allow create: if isVerifiedUser()
+        && isValidId(resourceId)
+        && isValidResource(request.resource.data)
+        && request.resource.data.createdAt == request.time;
+        
+      allow update: if isVerifiedUser()
+        && isValidId(resourceId)
+        && isValidResource(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt;
+        
+      allow delete: if isVerifiedUser();
+    }
+  }
+}
