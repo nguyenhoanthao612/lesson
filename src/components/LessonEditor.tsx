@@ -31,7 +31,7 @@ interface LessonEditorProps {
   lesson: Lesson;
   onSave: (updatedLesson: Lesson) => void;
   onBack: () => void;
-  onPresent: (lesson: Lesson) => void;
+  onPresent: (lesson: Lesson, initialPageIndex?: number) => void;
 }
 
 export default function LessonEditor({
@@ -55,7 +55,7 @@ export default function LessonEditor({
     setTimeout(() => setAlertMessage(null), 2500);
   };
 
-  // Keyboard shortcut listener for Ctrl+M (Save Changes)
+  // Keyboard shortcut listener for Ctrl+M (Save Changes) and F5 (Teach Deck from current slide)
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Allow Ctrl+M or Cmd+M to trigger save
@@ -63,12 +63,18 @@ export default function LessonEditor({
         e.preventDefault();
         triggerSave(editedLesson);
       }
+      
+      // Allow F5 to trigger presentation mode from the current active page
+      if (e.key === "F5") {
+        e.preventDefault();
+        onPresent(editedLesson, activePageIndex);
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [editedLesson]);
+  }, [editedLesson, activePageIndex]);
 
   // Lesson Level Details Edit
   const handleMetaChange = (field: keyof Lesson, value: any) => {
@@ -405,8 +411,9 @@ export default function LessonEditor({
           </button>
           <button
             id="editor-teach-now"
-            onClick={() => onPresent(editedLesson)}
+            onClick={() => onPresent(editedLesson, activePageIndex)}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer font-sans"
+            title="Teach Deck from current slide (F5)"
           >
             <Play className="w-3.5 h-3.5 fill-current" /> Teach Deck (F5)
           </button>
@@ -448,8 +455,17 @@ export default function LessonEditor({
                     SLIDE {idx + 1}
                   </span>
                   
-                  {/* Sorting / Delete icons layer */}
+                  {/* Sorting / Delete / Present icons layer */}
                   <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onPresent(editedLesson, idx); }}
+                      className={`p-0.5 rounded-sm transition-all ${
+                        activePageIndex === idx ? "text-emerald-200 hover:bg-white/10" : "text-emerald-600 hover:bg-emerald-50"
+                      }`}
+                      title="Teach Deck from this slide"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                    </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleMovePage(idx, "up"); }}
                       disabled={idx === 0}

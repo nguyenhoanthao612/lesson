@@ -46,6 +46,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<"dashboard" | "resources">("dashboard");
   const [activeLessonForEdit, setActiveLessonForEdit] = useState<Lesson | null>(null);
   const [activeLessonForPresent, setActiveLessonForPresent] = useState<Lesson | null>(null);
+  const [initialPresentationPageIndex, setInitialPresentationPageIndex] = useState<number>(0);
   const [notification, setNotification] = useState<{ message: string; type: "success" | "info" } | null>(null);
 
   // Email and password states
@@ -226,6 +227,7 @@ export default function App() {
     return (
       <PresentationMode
         lesson={activeLessonForPresent}
+        initialPageIndex={initialPresentationPageIndex}
         onExit={() => setActiveLessonForPresent(null)}
       />
     );
@@ -479,12 +481,13 @@ export default function App() {
                     setActiveLessonForEdit(updated);
                   }}
                   onBack={() => setActiveLessonForEdit(null)}
-                  onPresent={(lesson) => {
+                  onPresent={(lesson, initialPageIndex = 0) => {
                     handleSaveLesson(lesson);
                     // also update current local array reference
                     setLessons((curr) => curr.map((l) => (l.id === lesson.id ? lesson : l)));
                     // synchronize active edit lesson to prevent reverting on remount
                     setActiveLessonForEdit(lesson);
+                    setInitialPresentationPageIndex(initialPageIndex);
                     setActiveLessonForPresent(lesson);
                   }}
                 />
@@ -503,7 +506,10 @@ export default function App() {
                   resourcesCount={resources.length}
                   onCreateLesson={handleCreateLesson}
                   onEditLesson={(lesson) => setActiveLessonForEdit(lesson)}
-                  onPresentLesson={(lesson) => setActiveLessonForPresent(lesson)}
+                  onPresentLesson={(lesson) => {
+                    setInitialPresentationPageIndex(0);
+                    setActiveLessonForPresent(lesson);
+                  }}
                   onDuplicateLesson={handleDuplicateLesson}
                   onDeleteLesson={handleDeleteLesson}
                   onNavigateToResources={() => setCurrentView("resources")}
