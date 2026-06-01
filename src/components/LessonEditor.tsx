@@ -151,26 +151,69 @@ export default function LessonEditor({
   const [dragOverPageIdx, setDragOverPageIdx] = useState<number | null>(null);
   const [dragOverTopicName, setDragOverTopicName] = useState<string | null>(null);
 
+  // New Topic Form states for Parent and Child topic control
+  const [isCreatingTopic, setIsCreatingTopic] = useState(false);
+  const [newTopicType, setNewTopicType] = useState<"parent" | "child">("parent");
+  const [newParentName, setNewParentName] = useState("");
+  const [selectedParentForChild, setSelectedParentForChild] = useState("");
+  const [newChildName, setNewChildName] = useState("");
+
   // Helper to get active slide topic
   const getPageTopic = (page: LessonPage): string => {
     return page.topic?.trim() || editedLesson.topic?.trim() || "General Topic";
   };
 
-  // Helper to group pages dynamically by their topics
+  // Helper to group pages dynamically by their parent and child topics
   const topicGroups = React.useMemo(() => {
-    const groups: { topicName: string; pages: { page: LessonPage; originalIndex: number }[] }[] = [];
-    const groupMap: Record<string, typeof groups[0]> = {};
+    const parentGroupsMap: Record<string, {
+      parentName: string;
+      subtopicsMap: Record<string, {
+        subtopicName: string;
+        pages: { page: LessonPage; originalIndex: number }[];
+      }>;
+      subtopicsList: {
+        subtopicName: string;
+        pages: { page: LessonPage; originalIndex: number }[];
+      }[];
+    }> = {};
 
     editedLesson.pages.forEach((page, originalIndex) => {
-      const topicName = getPageTopic(page);
-      if (!groupMap[topicName]) {
-        groupMap[topicName] = { topicName, pages: [] };
-        groups.push(groupMap[topicName]);
+      const parentName = getPageTopic(page);
+      const subName = page.subtopic?.trim() || "";
+
+      if (!parentGroupsMap[parentName]) {
+        parentGroupsMap[parentName] = {
+          parentName,
+          subtopicsMap: {},
+          subtopicsList: []
+        };
       }
-      groupMap[topicName].pages.push({ page, originalIndex });
+
+      const pGroup = parentGroupsMap[parentName];
+      if (!pGroup.subtopicsMap[subName]) {
+        const subGroup = { subtopicName: subName, pages: [] };
+        pGroup.subtopicsMap[subName] = subGroup;
+        pGroup.subtopicsList.push(subGroup);
+      }
+
+      pGroup.subtopicsMap[subName].pages.push({ page, originalIndex });
     });
 
-    return groups;
+    // Sort or map lists
+    return Object.values(parentGroupsMap).map(pGroup => {
+      // Ensure empty subtopic is first in the list (so top-level slides of parent rendered at top)
+      pGroup.subtopicsList.sort((a, b) => {
+        if (a.subtopicName === "") return -1;
+        if (b.subtopicName === "") return 1;
+        return a.subtopicName.localeCompare(b.subtopicName);
+      });
+
+      return {
+        parentName: pGroup.parentName,
+        subtopics: pGroup.subtopicsList,
+        totalSlides: pGroup.subtopicsList.reduce((acc, sub) => acc + sub.pages.length, 0)
+      };
+    });
   }, [editedLesson.pages, editedLesson.topic]);
 
   const toggleTopicCollapse = (topicName: string) => {
@@ -180,8 +223,8 @@ export default function LessonEditor({
     }));
   };
 
-  // Reorders slides within the same topic or inserts next to another page in a different topic
-  const reorderPages = (draggedIdx: number, targetIdx: number, targetTopic?: string) => {
+  // Reorders slides within the same topic/subtopic or inserts next to another page in a different topic/subtopic
+  const reorderPages = (draggedIdx: number, targetIdx: number, targetTopic?: string, targetSubtopic?: string) => {
     if (draggedIdx === targetIdx && !targetTopic) return;
 
     const pagesCopy = [...editedLesson.pages];
@@ -189,6 +232,9 @@ export default function LessonEditor({
 
     if (targetTopic !== undefined) {
       movedPage.topic = targetTopic;
+    }
+    if (targetSubtopic !== undefined) {
+      movedPage.subtopic = targetSubtopic;
     }
 
     pagesCopy.splice(targetIdx, 0, movedPage);
@@ -199,24 +245,38 @@ export default function LessonEditor({
     triggerSave(updated);
   };
 
-  // Moves slide to a different topic (placed at the end of that topic's slide list)
-  const movePageToTopic = (draggedIdx: number, destTopicName: string) => {
+  // Moves slide to a different topic/subtopic (placed at the end of that specific list)
+  const movePageToTopic = (draggedIdx: number, destTopicName: string, destSubtopicName: string = "") => {
     const pagesCopy = [...editedLesson.pages];
     const [movedPage] = pagesCopy.splice(draggedIdx, 1);
 
     movedPage.topic = destTopicName;
+    movedPage.subtopic = destSubtopicName;
 
-    // Position of insertion: after the last slide of the target topic
-    let lastIndexInTopic = -1;
+    // Position of insertion: after the last slide of the target subtopic
+    let lastIndexWithTarget = -1;
     for (let i = pagesCopy.length - 1; i >= 0; i--) {
-      if (getPageTopic(pagesCopy[i]) === destTopicName) {
-        lastIndexInTopic = i;
+      const p = pagesCopy[i];
+      const matchParent = getPageTopic(p) === destTopicName;
+      const matchChild = (p.subtopic?.trim() || "") === destSubtopicName;
+      if (matchParent && matchChild) {
+        lastIndexWithTarget = i;
         break;
       }
     }
 
-    if (lastIndexInTopic !== -1) {
-      pagesCopy.splice(lastIndexInTopic + 1, 0, movedPage);
+    // Fallback: after any slide inside target parent topic
+    if (lastIndexWithTarget === -1) {
+      for (let i = pagesCopy.length - 1; i >= 0; i--) {
+        if (getPageTopic(pagesCopy[i]) === destTopicName) {
+          lastIndexWithTarget = i;
+          break;
+        }
+      }
+    }
+
+    if (lastIndexWithTarget !== -1) {
+      pagesCopy.splice(lastIndexWithTarget + 1, 0, movedPage);
     } else {
       // Append if no slide inside target topic yet
       pagesCopy.push(movedPage);
@@ -235,6 +295,55 @@ export default function LessonEditor({
       topic: newTopic
     };
     const updated = { ...editedLesson, pages: updatedPages };
+    triggerSave(updated);
+  };
+
+  const handlePageSubtopicChange = (newSubtopic: string) => {
+    const updatedPages = [...editedLesson.pages];
+    updatedPages[activePageIndex] = {
+      ...activePage,
+      subtopic: newSubtopic
+    };
+    const updated = { ...editedLesson, pages: updatedPages };
+    triggerSave(updated);
+  };
+
+  const handleCreateTopicSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    let parentValue = "";
+    let childValue = "";
+
+    if (newTopicType === "parent") {
+      if (!newParentName.trim()) return;
+      parentValue = newParentName.trim();
+    } else {
+      const pVal = selectedParentForChild.trim() || getPageTopic(activePage);
+      if (!pVal || !newChildName.trim()) return;
+      parentValue = pVal;
+      childValue = newChildName.trim();
+    }
+
+    // Create new blank page pre-assigned to this topic hierarchy
+    const newPageId = `slide-${Date.now()}`;
+    const newPage: LessonPage = {
+      id: newPageId,
+      title: childValue ? `Intro to ${childValue}` : `Intro to ${parentValue}`,
+      topic: parentValue,
+      subtopic: childValue,
+      blocks: []
+    };
+
+    const updatedPages = [...editedLesson.pages, newPage];
+    const updated = { ...editedLesson, pages: updatedPages };
+
+    // Select new slide & trigger save
+    setActivePageIndex(updatedPages.length - 1);
+    
+    // Clear inputs and close form panel
+    setNewParentName("");
+    setNewChildName("");
+    setIsCreatingTopic(false);
     triggerSave(updated);
   };
 
@@ -600,6 +709,124 @@ export default function LessonEditor({
     handleUpdateBlock(blockId, { tableRows: rowsCopy });
   };
 
+  const renderPageThumbnail = (p: LessonPage, idx: number, parentTopic: string, subTopic: string) => {
+    const isActive = activePageIndex === idx;
+    const isPageDragOver = dragOverPageIdx === idx;
+    const isBeingDragged = draggedPageIdx === idx;
+
+    return (
+      <div
+        key={p.id}
+        id={`thumbnail-slide-${p.id}`}
+        draggable={true}
+        onDragStart={(e) => {
+          setDraggedPageIdx(idx);
+          e.dataTransfer.setData("text/plain", `${idx}`);
+          e.currentTarget.style.opacity = "0.5";
+        }}
+        onDragEnd={(e) => {
+          e.currentTarget.style.opacity = "1";
+          setDraggedPageIdx(null);
+          setDragOverPageIdx(null);
+          setDragOverTopicName(null);
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (draggedPageIdx !== null && draggedPageIdx !== idx) {
+            setDragOverPageIdx(idx);
+          }
+        }}
+        onDragLeave={() => {
+          setDragOverPageIdx(null);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          if (draggedPageIdx !== null && draggedPageIdx !== idx) {
+            reorderPages(draggedPageIdx, idx, parentTopic, subTopic);
+          }
+          setDragOverPageIdx(null);
+        }}
+        onClick={() => setActivePageIndex(idx)}
+        className={`p-2 rounded-md border text-left transition-all cursor-pointer flex flex-col relative group/slide ${
+          isActive
+            ? "bg-blue-500 text-white border-blue-500 shadow-3xs"
+            : isBeingDragged
+            ? "bg-gray-105 border-gray-250 text-gray-400 opacity-60"
+            : "bg-white border-gray-150 text-gray-700 hover:bg-gray-50"
+        } ${
+          isPageDragOver
+            ? "border-b-4 border-blue-600 bg-blue-50/15"
+            : ""
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1 min-w-0">
+            <GripVertical className={`w-3 h-3 text-gray-350 shrink-0 ${
+              isActive ? "text-blue-250" : "text-gray-450"
+            }`} />
+            <span className={`text-[8.5px] font-bold tracking-wider shrink-0 uppercase ${
+              isActive ? "text-blue-105" : "text-gray-400"
+            }`}>
+              SLIDE {idx + 1}
+            </span>
+          </div>
+
+          {/* Sorting / Delete / Present icons layer */}
+          <div className="opacity-0 group-hover/slide:opacity-100 flex items-center gap-1 transition-all shrink-0">
+            <button
+              onClick={(e) => { e.stopPropagation(); onPresent(editedLesson, idx); }}
+              className={`p-0.5 rounded-sm transition-all ${
+                isActive ? "text-emerald-100 hover:bg-white/10" : "text-emerald-600 hover:bg-emerald-55"
+              }`}
+              title="Teach Deck from this slide"
+            >
+              <Play className="w-3 h-3 fill-current" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleMovePage(idx, "up"); }}
+              disabled={idx === 0}
+              className={`p-0.5 rounded-sm transition-all disabled:opacity-20 ${
+                isActive ? "text-white hover:bg-white/10" : "text-gray-400 hover:bg-gray-100"
+              }`}
+              title="Move slide up"
+            >
+              <MoveUp className="w-3 h-3" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleMovePage(idx, "down"); }}
+              disabled={idx === editedLesson.pages.length - 1}
+              className={`p-0.5 rounded-sm transition-all disabled:opacity-20 ${
+                isActive ? "text-white hover:bg-white/10" : "text-gray-400 hover:bg-gray-100"
+              }`}
+              title="Move slide down"
+            >
+              <MoveDown className="w-3 h-3" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleDeletePage(idx); }}
+              className={`p-0.5 rounded-sm transition-all ${
+                isActive ? "text-red-200 hover:bg-white/10" : "text-red-500 hover:bg-red-50"
+              }`}
+              title="Delete Slide"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+
+        <h5 className="font-bold text-[10.5px] mt-1 truncate">
+          {p.title || "Untitled Slide"}
+        </h5>
+
+        <span className={`text-[8px] mt-0.5 ${
+          isActive ? "text-blue-200" : "text-gray-400"
+        }`}>
+          {p.blocks?.length || 0} elements
+        </span>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-6" id="ic3-lesson-builder-root">
       
@@ -663,32 +890,135 @@ export default function LessonEditor({
         className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start"
       >
         
-        {/* Left Side: slide thumbnails reordering panel */}
+        {/* Left Side: slide thumbnails reordering panel with tree structure */}
         <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-xs space-y-4 lg:col-span-1">
           <div className="flex items-center justify-between border-b border-gray-50 pb-3">
             <h4 className="font-bold text-sm text-gray-900">Slide Navigator</h4>
-            <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 font-bold rounded-full font-sans">
-              {editedLesson.pages.length} Slides
-            </span>
+            <div className="flex items-center gap-1.5 font-sans">
+              {/* '+' button to show topic creation dialog */}
+              <button
+                type="button"
+                onClick={() => {
+                  setNewTopicType("parent");
+                  setIsCreatingTopic(!isCreatingTopic);
+                }}
+                className={`p-1.5 border rounded-lg transition-all flex items-center justify-center ${
+                  isCreatingTopic 
+                    ? "bg-blue-100 text-blue-700 border-blue-400" 
+                    : "hover:bg-blue-50 text-blue-600 border-blue-150"
+                }`}
+                title="Add Parent or Child Topic"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 font-bold rounded-full">
+                {editedLesson.pages.length} Slides
+              </span>
+            </div>
           </div>
 
-          {/* Draggable/Reorderable lists layout with tree topics */}
+          {/* Quick topic/subtopic creation inline form */}
+          {isCreatingTopic && (
+            <form onSubmit={handleCreateTopicSubmit} className="p-3 bg-blue-50/45 border border-blue-150 rounded-lg space-y-2.5 font-sans">
+              <div className="text-[10px] font-bold text-blue-800 flex justify-between items-center tracking-wider uppercase">
+                <span>Configure New Topic</span>
+                <button 
+                  type="button" 
+                  onClick={() => setIsCreatingTopic(false)} 
+                  className="text-[9px] text-gray-400 hover:text-gray-700 font-bold"
+                >
+                  Close
+                </button>
+              </div>
+              
+              {/* Type toggle */}
+              <div className="flex bg-gray-100 p-0.5 rounded text-[9.5px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setNewTopicType("parent")}
+                  className={`flex-1 py-1 text-center rounded transition-all ${newTopicType === "parent" ? "bg-white text-blue-700 shadow-3xs" : "text-gray-500 hover:text-gray-850"}`}
+                >
+                  Parent Topic
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewTopicType("child")}
+                  className={`flex-1 py-1 text-center rounded transition-all ${newTopicType === "child" ? "bg-white text-blue-700 shadow-3xs" : "text-gray-500 hover:text-gray-850"}`}
+                >
+                  Child Topic
+                </button>
+              </div>
+
+              {newTopicType === "parent" ? (
+                <div className="space-y-1">
+                  <label className="text-[9px] font-bold text-gray-450 uppercase block">Parent Topic Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={newParentName}
+                    onChange={(e) => setNewParentName(e.target.value)}
+                    placeholder="e.g. Operating Systems"
+                    className="w-full text-xs font-bold text-gray-800 bg-white border border-gray-250 rounded px-2.5 py-1.5 focus:outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-100"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="space-y-0.5">
+                    <label className="text-[9px] font-bold text-gray-450 uppercase block">Select Parent Folder</label>
+                    <select
+                      value={selectedParentForChild}
+                      onChange={(e) => setSelectedParentForChild(e.target.value)}
+                      className="w-full text-xs font-semibold text-gray-800 bg-white border border-gray-250 rounded p-1.5"
+                    >
+                      <option value="">-- Choose Existing --</option>
+                      {topicGroups.map(g => (
+                        <option key={g.parentName} value={g.parentName}>{g.parentName}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-gray-450 uppercase block">Child/Sub-topic Name</label>
+                    <input
+                      id="new-child-name-input"
+                      type="text"
+                      required
+                      value={newChildName}
+                      onChange={(e) => setNewChildName(e.target.value)}
+                      placeholder="e.g. Process Management"
+                      className="w-full text-xs font-bold text-gray-800 bg-white border border-gray-250 rounded px-2.5 py-1.5 focus:outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-100"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded shadow-3xs transition-all uppercase tracking-wider"
+              >
+                + Create Topic Group & Slide
+              </button>
+            </form>
+          )}
+
+          {/* Draggable/Reorderable tree layout with nested topics */}
           <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
             {topicGroups.map((group) => {
-              const isCollapsed = !!collapsedTopics[group.topicName];
-              const isTopicDragOver = dragOverTopicName === group.topicName;
+              const isParentCollapsed = !!collapsedTopics[`parent:${group.parentName}`];
+              const isParentDragOver = dragOverTopicName === `parent:${group.parentName}`;
               
               return (
                 <div 
-                  key={group.topicName} 
+                  key={group.parentName} 
                   className={`border rounded-lg overflow-hidden transition-all duration-200 ${
-                    isTopicDragOver 
+                    isParentDragOver 
                       ? "border-blue-400 bg-blue-50/50 scale-[0.99] ring-2 ring-blue-150" 
-                      : "border-gray-100 bg-gray-50/10"
+                      : "border-gray-150 bg-gray-50/10"
                   }`}
                   onDragOver={(e) => {
                     e.preventDefault();
-                    setDragOverTopicName(group.topicName);
+                    if (draggedPageIdx !== null) {
+                      setDragOverTopicName(`parent:${group.parentName}`);
+                    }
                   }}
                   onDragLeave={() => {
                     setDragOverTopicName(null);
@@ -696,162 +1026,142 @@ export default function LessonEditor({
                   onDrop={(e) => {
                     e.preventDefault();
                     if (draggedPageIdx !== null) {
-                      movePageToTopic(draggedPageIdx, group.topicName);
+                      movePageToTopic(draggedPageIdx, group.parentName, "");
                     }
                     setDragOverTopicName(null);
                   }}
                 >
-                  {/* Topic Header Row */}
+                  {/* Parent Topic Header Row */}
                   <div 
-                    className="flex items-center justify-between p-2 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-[11px] select-none cursor-pointer select-none transition-colors"
-                    onClick={() => toggleTopicCollapse(group.topicName)}
+                    className="flex items-center justify-between p-2 bg-gray-100 hover:bg-gray-250 text-gray-850 font-bold text-[11px] select-none cursor-pointer transition-colors"
+                    onClick={() => toggleTopicCollapse(`parent:${group.parentName}`)}
                   >
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-gray-550 hover:text-gray-800 transition">
-                        {isCollapsed ? (
+                    <div className="flex items-center gap-1.5 min-w-0 pr-1">
+                      <span className="text-gray-500 hover:text-gray-800 transition shrink-0">
+                        {isParentCollapsed ? (
                           <ChevronRight className="w-3.5 h-3.5" />
                         ) : (
                           <ChevronDown className="w-3.5 h-3.5" />
                         )}
                       </span>
-                      {isCollapsed ? (
-                        <Folder className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                      {isParentCollapsed ? (
+                        <Folder className="w-3.5 h-3.5 text-blue-600 shrink-0 select-none" />
                       ) : (
-                        <FolderOpen className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                        <FolderOpen className="w-3.5 h-3.5 text-blue-600 shrink-0 select-none" />
                       )}
-                      <span className="truncate" title={group.topicName}>{group.topicName}</span>
+                      <span className="truncate text-gray-900" title={group.parentName}>{group.parentName}</span>
                     </div>
-                    <span className="text-[9px] font-bold text-gray-500 bg-white border border-gray-150 px-1.5 py-0.5 rounded-full shrink-0">
-                      {group.pages.length} {group.pages.length === 1 ? 'slide' : 'slides'}
-                    </span>
+
+                    <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      {/* Plus icon on folder to directly append subtopic under it */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewTopicType("child");
+                          setSelectedParentForChild(group.parentName);
+                          setIsCreatingTopic(true);
+                          setTimeout(() => {
+                            const el = document.getElementById("new-child-name-input");
+                            if (el) el.focus();
+                          }, 100);
+                        }}
+                        className="p-1 hover:bg-white text-gray-500 hover:text-blue-600 border border-transparent hover:border-gray-200 rounded transition flex items-center justify-center bg-transparent"
+                        title={`Add Child Subtopic under "${group.parentName}"`}
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+                      <span className="text-[9px] font-bold text-gray-550 bg-white border border-gray-200 px-1.5 py-0.5 rounded-full">
+                        {group.totalSlides} {group.totalSlides === 1 ? 'slide' : 'slides'}
+                      </span>
+                    </div>
                   </div>
 
-                  {/* Pages list in this topic */}
-                  {!isCollapsed && (
-                    <div className="p-1.5 space-y-1.5 bg-white">
-                      {group.pages.length === 0 ? (
-                        <div className="text-[10px] text-gray-400 py-3 text-center italic border border-dashed border-gray-150 rounded-lg">
-                          No slides here. Drag slides here!
-                        </div>
-                      ) : (
-                        group.pages.map(({ page: p, originalIndex: idx }) => {
-                          const isActive = activePageIndex === idx;
-                          const isPageDragOver = dragOverPageIdx === idx;
-                          const isBeingDragged = draggedPageIdx === idx;
+                  {/* Under Parent: rendering List of Subtopics and Childless Pages */}
+                  {!isParentCollapsed && (
+                    <div className="p-1.5 bg-white space-y-2 border-t border-gray-100">
+                      {group.subtopics.map((sub) => {
+                        const isChildTopic = sub.subtopicName !== "";
 
+                        if (!isChildTopic && sub.pages.length > 0) {
+                          // Pages that belong directly to Parent (no subtopic set)
                           return (
-                            <div
-                              key={p.id}
-                              id={`thumbnail-slide-${p.id}`}
-                              draggable={true}
-                              onDragStart={(e) => {
-                                setDraggedPageIdx(idx);
-                                e.dataTransfer.setData("text/plain", `${idx}`);
-                                e.currentTarget.style.opacity = "0.5";
-                              }}
-                              onDragEnd={(e) => {
-                                e.currentTarget.style.opacity = "1";
-                                setDraggedPageIdx(null);
-                                setDragOverPageIdx(null);
-                                setDragOverTopicName(null);
-                              }}
-                              onDragOver={(e) => {
-                                e.preventDefault();
-                                if (draggedPageIdx !== null && draggedPageIdx !== idx) {
-                                  setDragOverPageIdx(idx);
-                                }
-                              }}
-                              onDragLeave={() => {
-                                setDragOverPageIdx(null);
-                              }}
-                              onDrop={(e) => {
-                                e.preventDefault();
-                                if (draggedPageIdx !== null && draggedPageIdx !== idx) {
-                                  reorderPages(draggedPageIdx, idx, group.topicName);
-                                }
-                                setDragOverPageIdx(null);
-                              }}
-                              onClick={() => setActivePageIndex(idx)}
-                              className={`p-2 rounded-md border text-left transition-all cursor-pointer flex flex-col relative group/slide ${
-                                isActive
-                                  ? "bg-blue-500 text-white border-blue-500 shadow-3xs"
-                                  : isBeingDragged
-                                  ? "bg-gray-100 border-gray-250 text-gray-400 opacity-60"
-                                  : "bg-white border-gray-100 text-gray-700 hover:bg-gray-50"
-                              } ${
-                                isPageDragOver
-                                  ? "border-b-4 border-blue-600 bg-blue-50/15"
-                                  : ""
-                              }`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1 min-w-0">
-                                  <GripVertical className={`w-3 h-3 text-gray-350 shrink-0 ${
-                                    isActive ? "text-blue-200" : "text-gray-450"
-                                  }`} />
-                                  <span className={`text-[8.5px] font-bold tracking-wider shrink-0 uppercase ${
-                                    isActive ? "text-blue-105" : "text-gray-400"
-                                  }`}>
-                                    SLIDE {idx + 1}
-                                  </span>
-                                </div>
-
-                                {/* Sorting / Delete / Present icons layer */}
-                                <div className="opacity-0 group-hover/slide:opacity-100 flex items-center gap-1 transition-all shrink-0">
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); onPresent(editedLesson, idx); }}
-                                    className={`p-0.5 rounded-sm transition-all ${
-                                      isActive ? "text-emerald-100 hover:bg-white/10" : "text-emerald-600 hover:bg-emerald-55"
-                                    }`}
-                                    title="Teach Deck from this slide"
-                                  >
-                                    <Play className="w-3 h-3 fill-current" />
-                                  </button>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleMovePage(idx, "up"); }}
-                                    disabled={idx === 0}
-                                    className={`p-0.5 rounded-sm transition-all disabled:opacity-20 ${
-                                      isActive ? "text-white hover:bg-white/10" : "text-gray-400 hover:bg-gray-100"
-                                    }`}
-                                    title="Move slide up"
-                                  >
-                                    <MoveUp className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleMovePage(idx, "down"); }}
-                                    disabled={idx === editedLesson.pages.length - 1}
-                                    className={`p-0.5 rounded-sm transition-all disabled:opacity-20 ${
-                                      isActive ? "text-white hover:bg-white/10" : "text-gray-400 hover:bg-gray-100"
-                                    }`}
-                                    title="Move slide down"
-                                  >
-                                    <MoveDown className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleDeletePage(idx); }}
-                                    className={`p-0.5 rounded-sm transition-all ${
-                                      isActive ? "text-red-200 hover:bg-white/10" : "text-red-500 hover:bg-red-50"
-                                    }`}
-                                    title="Delete Slide"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              </div>
-
-                              <h5 className="font-bold text-[11px] mt-1 truncate">
-                                {p.title || "Untitled Slide"}
-                              </h5>
-
-                              <span className={`text-[8.5px] mt-0.5 ${
-                                isActive ? "text-blue-200" : "text-gray-400"
-                              }`}>
-                                {p.blocks?.length || 0} elements
-                              </span>
+                            <div key="direct-pages" className="space-y-1.5">
+                              {sub.pages.map(({ page: p, originalIndex: idx }) => 
+                                renderPageThumbnail(p, idx, group.parentName, "")
+                              )}
                             </div>
                           );
-                        })
-                      )}
+                        } else if (!isChildTopic) {
+                          return null;
+                        }
+
+                        // Otherwise we have a defined Child Topic
+                        const isChildCollapsed = !!collapsedTopics[`child:${group.parentName}:${sub.subtopicName}`];
+                        const isChildDragOver = dragOverTopicName === `child:${group.parentName}:${sub.subtopicName}`;
+
+                        return (
+                          <div 
+                            key={sub.subtopicName}
+                            className={`border border-gray-150 rounded-lg p-1.5 transition-all ${
+                              isChildDragOver 
+                                ? "border-amber-400 bg-amber-50/20 ring-1 ring-amber-100" 
+                                : "bg-gray-50/5"
+                            }`}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              if (draggedPageIdx !== null) {
+                                setDragOverTopicName(`child:${group.parentName}:${sub.subtopicName}`);
+                              }
+                            }}
+                            onDragLeave={() => {
+                              setDragOverTopicName(null);
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              if (draggedPageIdx !== null) {
+                                movePageToTopic(draggedPageIdx, group.parentName, sub.subtopicName);
+                              }
+                              setDragOverTopicName(null);
+                            }}
+                          >
+                            {/* Child Topic Row */}
+                            <div 
+                              className="flex items-center justify-between p-1 hover:bg-gray-100 text-[10px] font-bold text-gray-700 bg-gray-50/60 select-none cursor-pointer rounded"
+                              onClick={() => toggleTopicCollapse(`child:${group.parentName}:${sub.subtopicName}`)}
+                            >
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="text-gray-400 hover:text-gray-700 transition shrink-0">
+                                  {isChildCollapsed ? (
+                                    <ChevronRight className="w-3 h-3" />
+                                  ) : (
+                                    <ChevronDown className="w-3 h-3" />
+                                  )}
+                                </span>
+                                <Folder className="w-3 h-3 text-amber-500 shrink-0" />
+                                <span className="truncate text-gray-800" title={sub.subtopicName}>{sub.subtopicName}</span>
+                              </div>
+                              <span className="text-[8.5px] font-bold text-gray-500 bg-white border border-gray-200 px-1 py-0.5 rounded shrink-0">
+                                {sub.pages.length} {sub.pages.length === 1 ? 'slide' : 'slides'}
+                              </span>
+                            </div>
+
+                            {/* Subtopic Pages list */}
+                            {!isChildCollapsed && (
+                              <div className="mt-1.5 pl-2 space-y-1.5 border-l border-dashed border-gray-200">
+                                {sub.pages.length === 0 ? (
+                                  <div className="text-[9px] text-gray-400 py-2.5 text-center italic border border-dashed border-gray-150 rounded bg-white">
+                                    Empty sub-topic. Drag slides here!
+                                  </div>
+                                ) : (
+                                  sub.pages.map(({ page: p, originalIndex: idx }) => 
+                                    renderPageThumbnail(p, idx, group.parentName, sub.subtopicName)
+                                  )
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -873,7 +1183,7 @@ export default function LessonEditor({
           
           {/* Active slide meta settings */}
           <div className="bg-gray-50/50 border-b border-gray-100 p-5 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider font-sans">Active Header Title</label>
                 <input
@@ -886,8 +1196,9 @@ export default function LessonEditor({
                 />
               </div>
 
+              {/* Active Slide Parent Topic */}
               <div className="space-y-1 font-sans">
-                <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider">Active Slide Topic / Group</label>
+                <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider">Active Parent Topic</label>
                 <input
                   id="slide-topic-editor-idx"
                   list="existing-topics-list"
@@ -910,6 +1221,31 @@ export default function LessonEditor({
                 </datalist>
               </div>
 
+              {/* Active Slide Child/Sub Topic */}
+              <div className="space-y-1 font-sans">
+                <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider">Active Child Topic (Subtopic)</label>
+                <input
+                  id="slide-subtopic-editor-idx"
+                  list="existing-subtopics-list"
+                  type="text"
+                  value={activePage.subtopic || ""}
+                  onChange={(e) => handlePageSubtopicChange(e.target.value)}
+                  placeholder="e.g. Memory Types"
+                  className="w-full text-xs font-bold text-gray-850 bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+                <datalist id="existing-subtopics-list">
+                  {Array.from(
+                    new Set(
+                      editedLesson.pages
+                        .map(p => p.subtopic?.trim())
+                        .filter((st): st is string => !!st)
+                    )
+                  ).map(st => (
+                    <option key={st} value={st} />
+                  ))}
+                </datalist>
+              </div>
+
               {/* Master Deck Metadata modification options */}
               <div className="space-y-1 font-sans">
                 <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider">Lesson Deck Category & Topic</label>
@@ -917,7 +1253,7 @@ export default function LessonEditor({
                   <select
                     value={editedLesson.category}
                     onChange={(e) => handleMetaChange("category", e.target.value as IC3Category)}
-                    className="bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 bg-white focus:outline-hidden focus:border-blue-500"
+                    className="bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 bg-white focus:outline-hidden focus:border-blue-500 shrink-0"
                   >
                     <option value={IC3Category.COMPUTING_FUNDAMENTALS}>{IC3Category.COMPUTING_FUNDAMENTALS}</option>
                     <option value={IC3Category.KEY_APPLICATIONS}>{IC3Category.KEY_APPLICATIONS}</option>

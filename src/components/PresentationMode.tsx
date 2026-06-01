@@ -174,7 +174,9 @@ export default function PresentationMode({
                 <span className="px-2 py-0.5 text-[9px] font-bold bg-amber-500/10 text-amber-600 dark:bg-amber-450/15 dark:text-amber-400 rounded-full border border-amber-500/20 shrink-0">
                   {(() => {
                     const currentPage = lesson.pages[currentPageIndex];
-                    return currentPage?.topic?.trim() || lesson.topic || "General Topic";
+                    const parent = currentPage?.topic?.trim() || lesson.topic || "General Topic";
+                    const child = currentPage?.subtopic?.trim() || "";
+                    return child ? `${parent} › ${child}` : parent;
                   })()}
                 </span>
               </div>
@@ -1231,14 +1233,18 @@ export default function PresentationMode({
             <select
               value={(() => {
                 const currentPage = lesson.pages[currentPageIndex];
-                return currentPage?.topic?.trim() || lesson.topic || "General Topic";
+                const p = currentPage?.topic?.trim() || lesson.topic || "General Topic";
+                const c = currentPage?.subtopic?.trim() || "";
+                return c ? `${p} › ${c}` : p;
               })()}
               onChange={(e) => {
-                const selectedTopic = e.target.value;
-                // Find first page index that matches chosen topic
+                const selectedKey = e.target.value;
+                // Find first page index that matches chosen topic/subtopic key
                 const targetIdx = lesson.pages.findIndex(p => {
-                  const t = p.topic?.trim() || lesson.topic || "General Topic";
-                  return t === selectedTopic;
+                  const parent = p.topic?.trim() || lesson.topic || "General Topic";
+                  const child = p.subtopic?.trim() || "";
+                  const key = child ? `${parent} › ${child}` : parent;
+                  return key === selectedKey;
                 });
                 if (targetIdx !== -1) {
                   setCurrentPageIndex(targetIdx);
@@ -1251,16 +1257,18 @@ export default function PresentationMode({
               }`}
             >
               {(() => {
-                const uniqueTopics: string[] = [];
+                const uniqueKeys: string[] = [];
                 lesson.pages.forEach(p => {
-                  const t = p.topic?.trim() || lesson.topic || "General Topic";
-                  if (!uniqueTopics.includes(t)) {
-                    uniqueTopics.push(t);
+                  const parent = p.topic?.trim() || lesson.topic || "General Topic";
+                  const child = p.subtopic?.trim() || "";
+                  const key = child ? `${parent} › ${child}` : parent;
+                  if (!uniqueKeys.includes(key)) {
+                    uniqueKeys.push(key);
                   }
                 });
-                return uniqueTopics.map(t => (
-                  <option key={t} value={t}>
-                    {t}
+                return uniqueKeys.map(key => (
+                  <option key={key} value={key}>
+                    {key}
                   </option>
                 ));
               })()}

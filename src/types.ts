@@ -91,6 +91,7 @@ export interface LessonPage {
   id: string;
   title: string;
   topic?: string;
+  subtopic?: string;
   blocks: ContentBlock[];
 }
 
