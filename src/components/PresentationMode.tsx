@@ -237,7 +237,7 @@ export default function PresentationMode({
         >
           {/* Active Side Heading/Title */}
           <div className="border-b pb-4 mb-6 md:mb-10 flex flex-col md:flex-row md:items-end justify-between gap-2">
-            <h1 className="text-2xl md:text-4xl font-serif italic font-semibold tracking-tight text-slate-900 dark:text-white">
+            <h1 className="text-2xl md:text-4xl font-sans italic font-semibold tracking-tight text-slate-900 dark:text-white">
               {activePage.title || "Untitled Slide Page"}
             </h1>
             <span className={`text-[9px] font-bold uppercase tracking-widest border px-3 py-1 rounded-full ${
@@ -258,7 +258,7 @@ export default function PresentationMode({
                 <div key={block.id} className="transition-all animate-fadeIn">
                   
                   {block.type === BlockType.HEADING && (
-                    <h3 className="text-xl md:text-2xl font-serif italic text-blue-600 dark:text-blue-400 border-l-4 border-blue-500 pl-3">
+                    <h3 className="text-xl md:text-2xl font-sans italic text-blue-600 dark:text-blue-400 border-l-4 border-blue-500 pl-3">
                       {block.headingText}
                     </h3>
                   )}
@@ -315,7 +315,7 @@ export default function PresentationMode({
                       <span className="text-[9px] font-bold text-blue-500 uppercase tracking-widest block mb-1">
                         Syllabus Concept Definition
                       </span>
-                      <h4 className="text-lg font-serif italic font-bold text-blue-950 dark:text-blue-200">
+                      <h4 className="text-lg font-sans italic font-bold text-blue-950 dark:text-blue-200">
                         {block.definitionTerm}
                       </h4>
                       <p className="text-sm md:text-base text-blue-900 dark:text-blue-100 mt-2 leading-relaxed font-sans">
@@ -331,7 +331,7 @@ export default function PresentationMode({
                       <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest block mb-1">
                         Exam Verification Target
                       </span>
-                      <p className="text-sm md:text-base text-amber-950 dark:text-amber-105 leading-relaxed font-serif italic font-semibold">
+                      <p className="text-sm md:text-base text-amber-950 dark:text-amber-105 leading-relaxed font-sans italic font-semibold">
                         {block.noteText}
                       </p>
                     </div>
@@ -344,7 +344,7 @@ export default function PresentationMode({
                       <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest block mb-1">
                         Applied Lab Work Prototype
                       </span>
-                      <h4 className="text-base font-serif italic font-bold text-indigo-950 dark:text-indigo-200">
+                      <h4 className="text-base font-sans italic font-bold text-indigo-950 dark:text-indigo-200">
                         {block.exampleTitle}
                       </h4>
                       <pre className="text-xs md:text-sm bg-slate-900 text-emerald-400 p-4 rounded-2xl mt-3 overflow-x-auto font-mono text-left font-semibold border border-slate-800 select-all">
@@ -360,7 +360,7 @@ export default function PresentationMode({
                       <span className="text-[9px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-widest block mb-1">
                         Student Sandbox Practice Assignment
                       </span>
-                      <h4 className="text-base font-serif italic font-bold text-teal-950 dark:text-teal-200">
+                      <h4 className="text-base font-sans italic font-bold text-teal-950 dark:text-teal-200">
                         {block.activityTitle}
                       </h4>
                       <p className="text-sm md:text-base text-teal-900 dark:text-teal-100 mt-2 leading-relaxed font-sans">

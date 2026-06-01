@@ -131,8 +131,8 @@ export default function Dashboard({
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-white/10 backdrop-blur-md text-blue-200">
             🏫 IC3 Certification GS6 Ready
           </span>
-          <h1 className="text-3xl md:text-5xl font-serif font-semibold tracking-tight text-white leading-tight">
-            Replace slides with elegant, <span className="italic font-serif text-blue-300">interactive web supplements</span> and lessons.
+          <h1 className="text-3xl md:text-5xl font-sans font-semibold tracking-tight text-white leading-tight">
+            Replace slides with elegant, <span className="italic font-sans text-blue-300">interactive web supplements</span> and lessons.
           </h1>
           <p className="text-slate-300 text-sm md:text-base max-w-2xl leading-relaxed">
             Create, manage, and present modern lessons with live hardware specs, productivity sheets, and connectivity modules optimized for classroom displays and projectors.
@@ -237,7 +237,7 @@ export default function Dashboard({
             }`}
           >
             <span className={`text-[9.5px] font-bold uppercase tracking-widest ${selectedCategory === "ALL" ? "text-slate-300" : "text-slate-400"}`}>System Core</span>
-            <h4 className="font-serif italic font-semibold text-base mt-2">All Course Decks</h4>
+            <h4 className="font-sans italic font-semibold text-base mt-2">All Course Decks</h4>
             <p className={`text-xs mt-1.5 ${selectedCategory === "ALL" ? "text-slate-300" : "text-slate-500"}`}>{lessons.length} active plans ready</p>
           </button>
 
@@ -253,7 +253,7 @@ export default function Dashboard({
             <div className="flex items-center gap-1.5 text-blue-600 font-bold text-[9px] uppercase tracking-widest">
               <Cpu className="w-3.5 h-3.5" /> Hardware & OS
             </div>
-            <h4 className="font-serif italic font-semibold text-base mt-2 text-blue-950">Computing Fundamentals</h4>
+            <h4 className="font-sans italic font-semibold text-base mt-2 text-blue-950">Computing Fundamentals</h4>
             <p className="text-xs text-blue-800/70 mt-1.5">{getCategoryCount(IC3Category.COMPUTING_FUNDAMENTALS)} lesson guides</p>
           </button>
 
@@ -269,7 +269,7 @@ export default function Dashboard({
             <div className="flex items-center gap-1.5 text-indigo-600 font-bold text-[9px] uppercase tracking-widest">
               <FileCheck className="w-3.5 h-3.5" /> Productivity Software
             </div>
-            <h4 className="font-serif italic font-semibold text-base mt-2 text-indigo-950">Key Applications</h4>
+            <h4 className="font-sans italic font-semibold text-base mt-2 text-indigo-950">Key Applications</h4>
             <p className="text-xs text-indigo-805/70 mt-1.5">{getCategoryCount(IC3Category.KEY_APPLICATIONS)} lesson guides</p>
           </button>
 
@@ -285,7 +285,7 @@ export default function Dashboard({
             <div className="flex items-center gap-1.5 text-teal-600 font-bold text-[9px] uppercase tracking-widest">
               <Globe className="w-3.5 h-3.5" /> Connectivity & Citizen
             </div>
-            <h4 className="font-serif italic font-semibold text-base mt-2 text-teal-950">Living Online</h4>
+            <h4 className="font-sans italic font-semibold text-base mt-2 text-teal-950">Living Online</h4>
             <p className="text-xs text-teal-800/70 mt-1.5">{getCategoryCount(IC3Category.LIVING_ONLINE)} lesson guides</p>
           </button>
         </div>
@@ -361,7 +361,7 @@ export default function Dashboard({
 
                 {/* Body Content */}
                 <div className="p-6 flex-1 flex flex-col space-y-2">
-                  <h4 className="font-serif italic font-semibold text-slate-900 group-hover:text-blue-600 transition-colors text-base line-clamp-1">
+                  <h4 className="font-sans italic font-semibold text-slate-900 group-hover:text-blue-600 transition-colors text-base line-clamp-1">
                     {lesson.title}
                   </h4>
                   <p className="text-xs text-slate-500 leading-relaxed line-clamp-2 flex-1">
@@ -452,7 +452,7 @@ export default function Dashboard({
           <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-100 overflow-hidden transform transition-all">
             {/* Modal Header */}
             <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white flex items-center justify-between">
-              <h3 className="font-serif italic font-semibold text-lg">Launch New IC3 GS6 Lesson Plan</h3>
+              <h3 className="font-sans font-semibold text-lg">Launch New IC3 GS6 Lesson Plan</h3>
               <button
                 onClick={() => setIsModalOpen(false)}
                 className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-all cursor-pointer"

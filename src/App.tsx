@@ -282,7 +282,7 @@ export default function App() {
               </span>
 
               <div className="space-y-2">
-                <h1 className="text-xl md:text-2xl font-serif font-semibold tracking-tight text-slate-900">
+                <h1 className="text-xl md:text-2xl font-sans font-semibold tracking-tight text-slate-900">
                   Welcome to IC3 Instructor Hub
                 </h1>
                 <p className="text-xs text-slate-500 max-w-md mx-auto lg:mx-0 leading-relaxed">

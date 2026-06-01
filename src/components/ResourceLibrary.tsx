@@ -119,7 +119,7 @@ export default function ResourceLibrary({
           <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[9px] bg-indigo-50 text-indigo-700 font-bold uppercase tracking-widest font-sans">
             📁 Handouts & Guidelines
           </span>
-          <h1 className="text-2xl font-serif font-semibold text-slate-900 mt-1">
+          <h1 className="text-2xl font-sans font-semibold text-slate-900 mt-1">
             IC3 Lesson Supplements & Handouts
           </h1>
           <p className="text-xs text-slate-500 max-w-xl">
