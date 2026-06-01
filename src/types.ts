@@ -20,10 +20,31 @@ export enum BlockType {
   EXAMPLE_BOX = "example_box",
   PRACTICE_ACTIVITY = "practice_activity",
   TABLE = "table",
+  // IC3 Question Suite
+  QUESTION_SINGLE = "question_single",
+  QUESTION_MULTIPLE = "question_multiple",
+  QUESTION_DRAG_DROP = "question_drag_drop",
+  QUESTION_HOTSPOT = "question_hotspot",
+  QUESTION_VIDEO = "question_video",
 }
 
 export interface TableCell {
   value: string;
+}
+
+export interface DragDropPair {
+  id: string;
+  item: string;
+  zone: string;
+}
+
+export interface HotspotArea {
+  id: string;
+  label: string;
+  x: number; // percentage (0-100)
+  y: number; // percentage (0-100)
+  radius: number; // circle click radius in pixels/percentage
+  isCorrect: boolean;
 }
 
 export interface ContentBlock {
@@ -44,6 +65,26 @@ export interface ContentBlock {
   activityText?: string;
   tableHeaders?: string[];
   tableRows?: TableCell[][];
+  
+  // Interactive Question Suite fields
+  questionText?: string;
+  questionOptions?: string[];
+  correctOptionIndex?: number;
+  correctOptionIndices?: number[];
+  
+  // Drag & Drop
+  dragDropPairs?: DragDropPair[];
+  
+  // Hotspots
+  hotspotImageUrl?: string;
+  hotspots?: HotspotArea[];
+  
+  // Video-based questions
+  videoQuestionText?: string;
+  videoYoutubeId?: string;
+  videoTimestamp?: number;
+  videoOptions?: string[];
+  videoCorrectOptionIndex?: number;
 }
 
 export interface LessonPage {
