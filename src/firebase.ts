@@ -336,7 +336,7 @@ export function subscribeToAuth(callback: (user: any | null) => void) {
 // Get All Lessons: React-friendly subscription or direct fetch
 export function subscribeToLessons(callback: (lessons: Lesson[]) => void) {
   const collectionName = "lessons";
-  if (isRealFirebaseConfigured && db) {
+  if (isRealFirebaseConfigured && db && auth?.currentUser) {
     const q = query(collection(db, collectionName), orderBy("updatedAt", "desc"));
     return onSnapshot(q, (snapshot) => {
       const results: Lesson[] = [];
@@ -361,7 +361,7 @@ export function subscribeToLessons(callback: (lessons: Lesson[]) => void) {
 // Save or Update Lesson
 export async function saveLesson(lesson: Lesson): Promise<void> {
   const path = `lessons/${lesson.id}`;
-  if (isRealFirebaseConfigured && db) {
+  if (isRealFirebaseConfigured && db && auth?.currentUser) {
     try {
       await setDoc(doc(db, "lessons", lesson.id), {
         ...lesson,
@@ -432,7 +432,7 @@ export function getCategoryImagePlaceholder(category: IC3Category): string {
 // Delete Lesson
 export async function deleteLesson(id: string): Promise<void> {
   const path = `lessons/${id}`;
-  if (isRealFirebaseConfigured && db) {
+  if (isRealFirebaseConfigured && db && auth?.currentUser) {
     try {
       await deleteDoc(doc(db, "lessons", id));
     } catch (error) {
@@ -459,7 +459,7 @@ export async function duplicateLesson(lesson: Lesson, newTitle?: string): Promis
 // Subscribe to Resources
 export function subscribeToResources(callback: (resources: FileResource[]) => void) {
   const collectionName = "resources";
-  if (isRealFirebaseConfigured && db) {
+  if (isRealFirebaseConfigured && db && auth?.currentUser) {
     const q = query(collection(db, collectionName), orderBy("createdAt", "desc"));
     return onSnapshot(q, (snapshot) => {
       const results: FileResource[] = [];
@@ -482,7 +482,7 @@ export function subscribeToResources(callback: (resources: FileResource[]) => vo
 // Add File Resource
 export async function saveResource(res: FileResource): Promise<void> {
   const path = `resources/${res.id}`;
-  if (isRealFirebaseConfigured && db) {
+  if (isRealFirebaseConfigured && db && auth?.currentUser) {
     try {
       await setDoc(doc(db, "resources", res.id), res);
     } catch (error) {
@@ -496,7 +496,7 @@ export async function saveResource(res: FileResource): Promise<void> {
 // Delete File Resource
 export async function deleteResource(id: string): Promise<void> {
   const path = `resources/${id}`;
-  if (isRealFirebaseConfigured && db) {
+  if (isRealFirebaseConfigured && db && auth?.currentUser) {
     try {
       await deleteDoc(doc(db, "resources", id));
     } catch (error) {
