@@ -475,6 +475,8 @@ export default function App() {
                     handleSaveLesson(updated);
                     // also update current local array reference
                     setLessons((curr) => curr.map((l) => (l.id === updated.id ? updated : l)));
+                    // synchronize active edit lesson to prevent reverting on remount
+                    setActiveLessonForEdit(updated);
                   }}
                   onBack={() => setActiveLessonForEdit(null)}
                   onPresent={(lesson) => setActiveLessonForPresent(lesson)}
