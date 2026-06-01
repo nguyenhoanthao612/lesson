@@ -32,17 +32,19 @@ interface LessonEditorProps {
   onSave: (updatedLesson: Lesson) => void;
   onBack: () => void;
   onPresent: (lesson: Lesson, initialPageIndex?: number) => void;
+  initialPageIndex?: number;
 }
 
 export default function LessonEditor({
   lesson,
   onSave,
   onBack,
-  onPresent
+  onPresent,
+  initialPageIndex = 0
 }: LessonEditorProps) {
   // Active state
   const [editedLesson, setEditedLesson] = useState<Lesson>({ ...lesson });
-  const [activePageIndex, setActivePageIndex] = useState<number>(0);
+  const [activePageIndex, setActivePageIndex] = useState<number>(initialPageIndex);
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
   const activePage = editedLesson.pages[activePageIndex] || editedLesson.pages[0];

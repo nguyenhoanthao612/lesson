@@ -47,6 +47,7 @@ export default function App() {
   const [activeLessonForEdit, setActiveLessonForEdit] = useState<Lesson | null>(null);
   const [activeLessonForPresent, setActiveLessonForPresent] = useState<Lesson | null>(null);
   const [initialPresentationPageIndex, setInitialPresentationPageIndex] = useState<number>(0);
+  const [editorPageIndex, setEditorPageIndex] = useState<number>(0);
   const [notification, setNotification] = useState<{ message: string; type: "success" | "info" } | null>(null);
 
   // Email and password states
@@ -140,6 +141,7 @@ export default function App() {
     try {
       const newlyCreated = await createNewLesson(title, description, category, topic, authorCredentials);
       setLessons((prev) => [newlyCreated, ...prev]);
+      setEditorPageIndex(0);
       setActiveLessonForEdit(newlyCreated);
       triggerNotification("Brand new lesson generated. Load template modules below!", "success");
     } catch (err) {
@@ -228,7 +230,12 @@ export default function App() {
       <PresentationMode
         lesson={activeLessonForPresent}
         initialPageIndex={initialPresentationPageIndex}
-        onExit={() => setActiveLessonForPresent(null)}
+        onExit={(finalPageIndex) => {
+          if (finalPageIndex !== undefined) {
+            setEditorPageIndex(finalPageIndex);
+          }
+          setActiveLessonForPresent(null);
+        }}
       />
     );
   }
@@ -473,6 +480,7 @@ export default function App() {
               {activeLessonForEdit ? (
                 <LessonEditor
                   lesson={activeLessonForEdit}
+                  initialPageIndex={editorPageIndex}
                   onSave={(updated) => {
                     handleSaveLesson(updated);
                     // also update current local array reference
@@ -488,6 +496,7 @@ export default function App() {
                     // synchronize active edit lesson to prevent reverting on remount
                     setActiveLessonForEdit(lesson);
                     setInitialPresentationPageIndex(initialPageIndex);
+                    setEditorPageIndex(initialPageIndex);
                     setActiveLessonForPresent(lesson);
                   }}
                 />
@@ -505,7 +514,10 @@ export default function App() {
                   lessons={lessons}
                   resourcesCount={resources.length}
                   onCreateLesson={handleCreateLesson}
-                  onEditLesson={(lesson) => setActiveLessonForEdit(lesson)}
+                  onEditLesson={(lesson) => {
+                    setEditorPageIndex(0);
+                    setActiveLessonForEdit(lesson);
+                  }}
                   onPresentLesson={(lesson) => {
                     setInitialPresentationPageIndex(0);
                     setActiveLessonForPresent(lesson);

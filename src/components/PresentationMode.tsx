@@ -28,7 +28,7 @@ import { Lesson, LessonPage, ContentBlock, BlockType } from "../types";
 
 interface PresentationModeProps {
   lesson: Lesson;
-  onExit: () => void;
+  onExit: (currentPageIndex?: number) => void;
   initialPageIndex?: number;
 }
 
@@ -67,7 +67,7 @@ export default function PresentationMode({
           break;
         case "Escape":
           e.preventDefault();
-          onExit();
+          onExit(currentPageIndex);
           break;
       }
     };
@@ -213,7 +213,7 @@ export default function PresentationMode({
             {/* Termination button */}
             <button
               id="presentation-btn-quit"
-              onClick={onExit}
+              onClick={() => onExit(currentPageIndex)}
               className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-lg shadow-sm flex items-center gap-1 transition-all cursor-pointer"
             >
               <X className="w-3.5 h-3.5" /> Exit [Esc]
