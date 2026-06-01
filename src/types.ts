@@ -90,6 +90,7 @@ export interface ContentBlock {
 export interface LessonPage {
   id: string;
   title: string;
+  topic?: string;
   blocks: ContentBlock[];
 }
 

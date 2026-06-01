@@ -167,9 +167,17 @@ export default function PresentationMode({
               <span className="text-[10px] font-bold uppercase tracking-wider text-blue-500 block">
                 Classroom Presentation Live Session
               </span>
-              <h2 className="text-sm font-bold truncate max-w-sm md:max-w-md">
-                {lesson.title}
-              </h2>
+              <div className="flex items-center gap-2 mt-0.5 min-w-0">
+                <h2 className="text-sm font-bold truncate max-w-sm md:max-w-md">
+                  {lesson.title}
+                </h2>
+                <span className="px-2 py-0.5 text-[9px] font-bold bg-amber-500/10 text-amber-600 dark:bg-amber-450/15 dark:text-amber-400 rounded-full border border-amber-500/20 shrink-0">
+                  {(() => {
+                    const currentPage = lesson.pages[currentPageIndex];
+                    return currentPage?.topic?.trim() || lesson.topic || "General Topic";
+                  })()}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -1217,23 +1225,66 @@ export default function PresentationMode({
         </div>
 
         {/* Quick Drawer Link Dropdown */}
-        <div className="flex items-center gap-3 font-sans text-xs">
-          <span>Jump to slide:</span>
-          <select
-            value={currentPageIndex}
-            onChange={(e) => setCurrentPageIndex(Number(e.target.value))}
-            className={`border rounded-lg px-2 py-1.5 focus:outline-hidden ${
-              isHighContrast 
-                ? "bg-slate-900 border-slate-850 text-white" 
-                : "bg-white border-gray-200 text-gray-700"
-            }`}
-          >
-            {lesson.pages.map((p, idx) => (
-              <option key={p.id} value={idx}>
-                {idx + 1}. {p.title || `Slide ${idx + 1}`}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap items-center gap-4 font-sans text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="font-semibold text-gray-500 dark:text-slate-400">Jump to Topic:</span>
+            <select
+              value={(() => {
+                const currentPage = lesson.pages[currentPageIndex];
+                return currentPage?.topic?.trim() || lesson.topic || "General Topic";
+              })()}
+              onChange={(e) => {
+                const selectedTopic = e.target.value;
+                // Find first page index that matches chosen topic
+                const targetIdx = lesson.pages.findIndex(p => {
+                  const t = p.topic?.trim() || lesson.topic || "General Topic";
+                  return t === selectedTopic;
+                });
+                if (targetIdx !== -1) {
+                  setCurrentPageIndex(targetIdx);
+                }
+              }}
+              className={`border rounded-lg px-2 py-1.5 focus:outline-hidden text-xs font-bold ${
+                isHighContrast 
+                  ? "bg-slate-900 border-slate-800 text-white" 
+                  : "bg-white border-gray-200 text-gray-700"
+              }`}
+            >
+              {(() => {
+                const uniqueTopics: string[] = [];
+                lesson.pages.forEach(p => {
+                  const t = p.topic?.trim() || lesson.topic || "General Topic";
+                  if (!uniqueTopics.includes(t)) {
+                    uniqueTopics.push(t);
+                  }
+                });
+                return uniqueTopics.map(t => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ));
+              })()}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="font-semibold text-gray-500 dark:text-slate-400">Jump to Slide:</span>
+            <select
+              value={currentPageIndex}
+              onChange={(e) => setCurrentPageIndex(Number(e.target.value))}
+              className={`border rounded-lg px-2 py-1.5 focus:outline-hidden text-xs font-semibold ${
+                isHighContrast 
+                  ? "bg-slate-900 border-slate-800 text-white" 
+                  : "bg-white border-gray-200 text-gray-700"
+              }`}
+            >
+              {lesson.pages.map((p, idx) => (
+                <option key={p.id} value={idx}>
+                  {idx + 1}. {p.title || `Slide ${idx + 1}`}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         
         {/* Shorthand Instructions Overlay */}

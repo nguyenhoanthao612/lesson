@@ -22,6 +22,10 @@ import {
   Grid, 
   HelpCircle,
   ChevronRight,
+  ChevronDown,
+  FolderOpen,
+  Folder,
+  GripVertical,
   Eye,
   Save,
   CheckCircle,
@@ -138,6 +142,101 @@ export default function LessonEditor({
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
   const activePage = editedLesson.pages[activePageIndex] || editedLesson.pages[0];
+
+  // Topic/Category collapse states
+  const [collapsedTopics, setCollapsedTopics] = useState<Record<string, boolean>>({});
+
+  // Slide Navigator drag item states
+  const [draggedPageIdx, setDraggedPageIdx] = useState<number | null>(null);
+  const [dragOverPageIdx, setDragOverPageIdx] = useState<number | null>(null);
+  const [dragOverTopicName, setDragOverTopicName] = useState<string | null>(null);
+
+  // Helper to get active slide topic
+  const getPageTopic = (page: LessonPage): string => {
+    return page.topic?.trim() || editedLesson.topic?.trim() || "General Topic";
+  };
+
+  // Helper to group pages dynamically by their topics
+  const topicGroups = React.useMemo(() => {
+    const groups: { topicName: string; pages: { page: LessonPage; originalIndex: number }[] }[] = [];
+    const groupMap: Record<string, typeof groups[0]> = {};
+
+    editedLesson.pages.forEach((page, originalIndex) => {
+      const topicName = getPageTopic(page);
+      if (!groupMap[topicName]) {
+        groupMap[topicName] = { topicName, pages: [] };
+        groups.push(groupMap[topicName]);
+      }
+      groupMap[topicName].pages.push({ page, originalIndex });
+    });
+
+    return groups;
+  }, [editedLesson.pages, editedLesson.topic]);
+
+  const toggleTopicCollapse = (topicName: string) => {
+    setCollapsedTopics(prev => ({
+      ...prev,
+      [topicName]: !prev[topicName]
+    }));
+  };
+
+  // Reorders slides within the same topic or inserts next to another page in a different topic
+  const reorderPages = (draggedIdx: number, targetIdx: number, targetTopic?: string) => {
+    if (draggedIdx === targetIdx && !targetTopic) return;
+
+    const pagesCopy = [...editedLesson.pages];
+    const [movedPage] = pagesCopy.splice(draggedIdx, 1);
+
+    if (targetTopic !== undefined) {
+      movedPage.topic = targetTopic;
+    }
+
+    pagesCopy.splice(targetIdx, 0, movedPage);
+
+    const updated = { ...editedLesson, pages: pagesCopy };
+    const updatedActiveIdx = pagesCopy.findIndex(p => p.id === activePage.id);
+    setActivePageIndex(updatedActiveIdx !== -1 ? updatedActiveIdx : 0);
+    triggerSave(updated);
+  };
+
+  // Moves slide to a different topic (placed at the end of that topic's slide list)
+  const movePageToTopic = (draggedIdx: number, destTopicName: string) => {
+    const pagesCopy = [...editedLesson.pages];
+    const [movedPage] = pagesCopy.splice(draggedIdx, 1);
+
+    movedPage.topic = destTopicName;
+
+    // Position of insertion: after the last slide of the target topic
+    let lastIndexInTopic = -1;
+    for (let i = pagesCopy.length - 1; i >= 0; i--) {
+      if (getPageTopic(pagesCopy[i]) === destTopicName) {
+        lastIndexInTopic = i;
+        break;
+      }
+    }
+
+    if (lastIndexInTopic !== -1) {
+      pagesCopy.splice(lastIndexInTopic + 1, 0, movedPage);
+    } else {
+      // Append if no slide inside target topic yet
+      pagesCopy.push(movedPage);
+    }
+
+    const updated = { ...editedLesson, pages: pagesCopy };
+    const updatedActiveIdx = pagesCopy.findIndex(p => p.id === activePage.id);
+    setActivePageIndex(updatedActiveIdx !== -1 ? updatedActiveIdx : 0);
+    triggerSave(updated);
+  };
+
+  const handlePageTopicChange = (newTopic: string) => {
+    const updatedPages = [...editedLesson.pages];
+    updatedPages[activePageIndex] = {
+      ...activePage,
+      topic: newTopic
+    };
+    const updated = { ...editedLesson, pages: updatedPages };
+    triggerSave(updated);
+  };
 
   // Helper to trigger save up
   const triggerSave = (newLesson: Lesson) => {
@@ -573,86 +672,197 @@ export default function LessonEditor({
             </span>
           </div>
 
-          {/* Draggable/Reorderable lists layout */}
-          <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
-            {editedLesson.pages.map((p, idx) => (
-              <div
-                key={p.id}
-                id={`thumbnail-slide-${p.id}`}
-                onClick={() => setActivePageIndex(idx)}
-                className={`p-3 rounded-lg border text-left transition-all cursor-pointer flex flex-col relative group ${
-                  activePageIndex === idx
-                    ? "bg-blue-500 text-white border-blue-500 shadow-xs"
-                    : "bg-white border-gray-100 text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className={`text-[10px] font-bold ${
-                    activePageIndex === idx ? "text-blue-100" : "text-gray-400"
-                  }`}>
-                    SLIDE {idx + 1}
-                  </span>
-                  
-                  {/* Sorting / Delete / Present icons layer */}
-                  <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onPresent(editedLesson, idx); }}
-                      className={`p-0.5 rounded-sm transition-all ${
-                        activePageIndex === idx ? "text-emerald-200 hover:bg-white/10" : "text-emerald-600 hover:bg-emerald-50"
-                      }`}
-                      title="Teach Deck from this slide"
-                    >
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleMovePage(idx, "up"); }}
-                      disabled={idx === 0}
-                      className={`p-0.5 rounded-sm transition-all ${
-                        activePageIndex === idx ? "text-white hover:bg-white/10" : "text-gray-400 hover:bg-gray-100"
-                      }`}
-                      title="Move slide up"
-                    >
-                      <MoveUp className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleMovePage(idx, "down"); }}
-                      disabled={idx === editedLesson.pages.length - 1}
-                      className={`p-0.5 rounded-sm transition-all ${
-                        activePageIndex === idx ? "text-white hover:bg-white/10" : "text-gray-400 hover:bg-gray-100"
-                      }`}
-                      title="Move slide down"
-                    >
-                      <MoveDown className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDeletePage(idx); }}
-                      className={`p-0.5 rounded-sm transition-all ${
-                        activePageIndex === idx ? "text-red-200 hover:bg-white/10" : "text-red-500 hover:bg-red-50"
-                      }`}
-                      title="Delete Slide"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+          {/* Draggable/Reorderable lists layout with tree topics */}
+          <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+            {topicGroups.map((group) => {
+              const isCollapsed = !!collapsedTopics[group.topicName];
+              const isTopicDragOver = dragOverTopicName === group.topicName;
+              
+              return (
+                <div 
+                  key={group.topicName} 
+                  className={`border rounded-lg overflow-hidden transition-all duration-200 ${
+                    isTopicDragOver 
+                      ? "border-blue-400 bg-blue-50/50 scale-[0.99] ring-2 ring-blue-150" 
+                      : "border-gray-100 bg-gray-50/10"
+                  }`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOverTopicName(group.topicName);
+                  }}
+                  onDragLeave={() => {
+                    setDragOverTopicName(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (draggedPageIdx !== null) {
+                      movePageToTopic(draggedPageIdx, group.topicName);
+                    }
+                    setDragOverTopicName(null);
+                  }}
+                >
+                  {/* Topic Header Row */}
+                  <div 
+                    className="flex items-center justify-between p-2 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-[11px] select-none cursor-pointer select-none transition-colors"
+                    onClick={() => toggleTopicCollapse(group.topicName)}
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-gray-550 hover:text-gray-800 transition">
+                        {isCollapsed ? (
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        )}
+                      </span>
+                      {isCollapsed ? (
+                        <Folder className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                      ) : (
+                        <FolderOpen className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                      )}
+                      <span className="truncate" title={group.topicName}>{group.topicName}</span>
+                    </div>
+                    <span className="text-[9px] font-bold text-gray-500 bg-white border border-gray-150 px-1.5 py-0.5 rounded-full shrink-0">
+                      {group.pages.length} {group.pages.length === 1 ? 'slide' : 'slides'}
+                    </span>
                   </div>
-                </div>
 
-                <h5 className="font-bold text-xs mt-1.5 truncate">
-                  {p.title || "Untitled Slide"}
-                </h5>
-                
-                <span className={`text-[9px] mt-1 ${
-                  activePageIndex === idx ? "text-blue-200" : "text-gray-400"
-                }`}>
-                  {p.blocks?.length || 0} interactive elements
-                </span>
-              </div>
-            ))}
+                  {/* Pages list in this topic */}
+                  {!isCollapsed && (
+                    <div className="p-1.5 space-y-1.5 bg-white">
+                      {group.pages.length === 0 ? (
+                        <div className="text-[10px] text-gray-400 py-3 text-center italic border border-dashed border-gray-150 rounded-lg">
+                          No slides here. Drag slides here!
+                        </div>
+                      ) : (
+                        group.pages.map(({ page: p, originalIndex: idx }) => {
+                          const isActive = activePageIndex === idx;
+                          const isPageDragOver = dragOverPageIdx === idx;
+                          const isBeingDragged = draggedPageIdx === idx;
+
+                          return (
+                            <div
+                              key={p.id}
+                              id={`thumbnail-slide-${p.id}`}
+                              draggable={true}
+                              onDragStart={(e) => {
+                                setDraggedPageIdx(idx);
+                                e.dataTransfer.setData("text/plain", `${idx}`);
+                                e.currentTarget.style.opacity = "0.5";
+                              }}
+                              onDragEnd={(e) => {
+                                e.currentTarget.style.opacity = "1";
+                                setDraggedPageIdx(null);
+                                setDragOverPageIdx(null);
+                                setDragOverTopicName(null);
+                              }}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                if (draggedPageIdx !== null && draggedPageIdx !== idx) {
+                                  setDragOverPageIdx(idx);
+                                }
+                              }}
+                              onDragLeave={() => {
+                                setDragOverPageIdx(null);
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                if (draggedPageIdx !== null && draggedPageIdx !== idx) {
+                                  reorderPages(draggedPageIdx, idx, group.topicName);
+                                }
+                                setDragOverPageIdx(null);
+                              }}
+                              onClick={() => setActivePageIndex(idx)}
+                              className={`p-2 rounded-md border text-left transition-all cursor-pointer flex flex-col relative group/slide ${
+                                isActive
+                                  ? "bg-blue-500 text-white border-blue-500 shadow-3xs"
+                                  : isBeingDragged
+                                  ? "bg-gray-100 border-gray-250 text-gray-400 opacity-60"
+                                  : "bg-white border-gray-100 text-gray-700 hover:bg-gray-50"
+                              } ${
+                                isPageDragOver
+                                  ? "border-b-4 border-blue-600 bg-blue-50/15"
+                                  : ""
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1 min-w-0">
+                                  <GripVertical className={`w-3 h-3 text-gray-350 shrink-0 ${
+                                    isActive ? "text-blue-200" : "text-gray-450"
+                                  }`} />
+                                  <span className={`text-[8.5px] font-bold tracking-wider shrink-0 uppercase ${
+                                    isActive ? "text-blue-105" : "text-gray-400"
+                                  }`}>
+                                    SLIDE {idx + 1}
+                                  </span>
+                                </div>
+
+                                {/* Sorting / Delete / Present icons layer */}
+                                <div className="opacity-0 group-hover/slide:opacity-100 flex items-center gap-1 transition-all shrink-0">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); onPresent(editedLesson, idx); }}
+                                    className={`p-0.5 rounded-sm transition-all ${
+                                      isActive ? "text-emerald-100 hover:bg-white/10" : "text-emerald-600 hover:bg-emerald-55"
+                                    }`}
+                                    title="Teach Deck from this slide"
+                                  >
+                                    <Play className="w-3 h-3 fill-current" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleMovePage(idx, "up"); }}
+                                    disabled={idx === 0}
+                                    className={`p-0.5 rounded-sm transition-all disabled:opacity-20 ${
+                                      isActive ? "text-white hover:bg-white/10" : "text-gray-400 hover:bg-gray-100"
+                                    }`}
+                                    title="Move slide up"
+                                  >
+                                    <MoveUp className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleMovePage(idx, "down"); }}
+                                    disabled={idx === editedLesson.pages.length - 1}
+                                    className={`p-0.5 rounded-sm transition-all disabled:opacity-20 ${
+                                      isActive ? "text-white hover:bg-white/10" : "text-gray-400 hover:bg-gray-100"
+                                    }`}
+                                    title="Move slide down"
+                                  >
+                                    <MoveDown className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleDeletePage(idx); }}
+                                    className={`p-0.5 rounded-sm transition-all ${
+                                      isActive ? "text-red-200 hover:bg-white/10" : "text-red-500 hover:bg-red-50"
+                                    }`}
+                                    title="Delete Slide"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <h5 className="font-bold text-[11px] mt-1 truncate">
+                                {p.title || "Untitled Slide"}
+                              </h5>
+
+                              <span className={`text-[8.5px] mt-0.5 ${
+                                isActive ? "text-blue-200" : "text-gray-400"
+                              }`}>
+                                {p.blocks?.length || 0} elements
+                              </span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <button
             id="editor-btn-add-page"
             onClick={handleAddPage}
-            className="w-full py-2.5 bg-gray-50 hover:bg-gray-100 text-gray-700 font-semibold text-xs rounded-lg border border-dashed border-gray-200 flex items-center justify-center gap-1.5 transition-all cursor-pointer font-sans"
+            className="w-full py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 font-bold text-xs rounded-lg border border-dashed border-gray-200 flex items-center justify-center gap-1.5 transition-all cursor-pointer font-sans"
           >
             <Plus className="w-3.5 h-3.5" /> Add Blank Slide
           </button>
@@ -663,27 +873,51 @@ export default function LessonEditor({
           
           {/* Active slide meta settings */}
           <div className="bg-gray-50/50 border-b border-gray-100 p-5 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider font-sans">Active Header Title</label>
+                <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider font-sans">Active Header Title</label>
                 <input
                   id="slide-title-editor-idx"
                   type="text"
                   value={activePage.title}
                   onChange={(e) => handlePageTitleChange(e.target.value)}
                   placeholder="e.g. Memory Concepts"
-                  className="w-full text-base font-bold text-gray-850 bg-white border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-sans"
+                  className="w-full text-sm font-bold text-gray-850 bg-white border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-sans"
                 />
+              </div>
+
+              <div className="space-y-1 font-sans">
+                <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider">Active Slide Topic / Group</label>
+                <input
+                  id="slide-topic-editor-idx"
+                  list="existing-topics-list"
+                  type="text"
+                  value={activePage.topic || ""}
+                  onChange={(e) => handlePageTopicChange(e.target.value)}
+                  placeholder={`e.g. ${editedLesson.topic || "General"}`}
+                  className="w-full text-xs font-bold text-gray-850 bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+                <datalist id="existing-topics-list">
+                  {Array.from(
+                    new Set(
+                      editedLesson.pages
+                        .map(p => p.topic?.trim())
+                        .filter((t): t is string => !!t)
+                    )
+                  ).map(t => (
+                    <option key={t} value={t} />
+                  ))}
+                </datalist>
               </div>
 
               {/* Master Deck Metadata modification options */}
               <div className="space-y-1 font-sans">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Lesson Deck Category & Topic</label>
+                <label className="text-[10px] font-bold text-gray-450 uppercase tracking-wider">Lesson Deck Category & Topic</label>
                 <div className="flex gap-2">
                   <select
                     value={editedLesson.category}
                     onChange={(e) => handleMetaChange("category", e.target.value as IC3Category)}
-                    className="bg-white border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-700 bg-white focus:outline-hidden focus:border-blue-500"
+                    className="bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 bg-white focus:outline-hidden focus:border-blue-500"
                   >
                     <option value={IC3Category.COMPUTING_FUNDAMENTALS}>{IC3Category.COMPUTING_FUNDAMENTALS}</option>
                     <option value={IC3Category.KEY_APPLICATIONS}>{IC3Category.KEY_APPLICATIONS}</option>
@@ -694,7 +928,7 @@ export default function LessonEditor({
                     value={editedLesson.topic}
                     onChange={(e) => handleMetaChange("topic", e.target.value)}
                     placeholder="Topic Tag"
-                    className="w-full text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-3 py-1 focus:outline-hidden focus:border-blue-500"
+                    className="w-full text-xs text-gray-750 bg-white border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-hidden focus:border-blue-500"
                   />
                 </div>
               </div>
