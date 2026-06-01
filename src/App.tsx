@@ -9,6 +9,7 @@ import {
   subscribeToLessons, 
   subscribeToResources, 
   loginWithGoogle, 
+  loginWithCredentials,
   logoutUser, 
   saveLesson, 
   deleteLesson, 
@@ -46,6 +47,12 @@ export default function App() {
   const [activeLessonForEdit, setActiveLessonForEdit] = useState<Lesson | null>(null);
   const [activeLessonForPresent, setActiveLessonForPresent] = useState<Lesson | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: "success" | "info" } | null>(null);
+
+  // Email and password states
+  const [emailInput, setEmailInput] = useState<string>("");
+  const [passwordInput, setPasswordInput] = useState<string>("");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authSubmitting, setAuthSubmitting] = useState<boolean>(false);
 
   // Initialize auth tracking and real-time document listeners
   useEffect(() => {
@@ -92,6 +99,22 @@ export default function App() {
     } catch (err) {
       console.error("Auth Failure:", err);
       triggerNotification("Authenticating aborted or timed out.", "info");
+    }
+  };
+
+  const handleCredentialsLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthSubmitting(true);
+    try {
+      const loggedUser = await loginWithCredentials(emailInput, passwordInput);
+      setUser(loggedUser);
+      triggerNotification("Instructor authenticated with credentials successfully!", "success");
+    } catch (err: any) {
+      console.error("Credentials Auth Failure:", err);
+      setAuthError(err?.message || "Failed to authenticate with credentials.");
+    } finally {
+      setAuthSubmitting(false);
     }
   };
 
@@ -253,43 +276,89 @@ export default function App() {
             </div>
 
             {/* Auth panel */}
-            <div className="lg:col-span-7 p-10 flex flex-col justify-center space-y-6 text-center lg:text-left">
+            <div className="lg:col-span-7 p-10 flex flex-col justify-center space-y-5 text-center lg:text-left">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 font-sans mx-auto lg:mx-0 w-fit">
                 <ShieldCheck className="w-3.5 h-3.5" /> Authenticated Access Gated
               </span>
 
               <div className="space-y-2">
-                <h1 className="text-2xl font-sans font-bold tracking-tight text-gray-900">
+                <h1 className="text-xl md:text-2xl font-serif font-semibold tracking-tight text-slate-900">
                   Welcome to IC3 Instructor Hub
                 </h1>
-                <p className="text-xs text-gray-400 max-w-md mx-auto lg:mx-0 leading-relaxed">
-                  Sign in with your Google Educator credentials to access and draft your live lesson slides, student worksheets, and classroom resources.
+                <p className="text-xs text-slate-500 max-w-md mx-auto lg:mx-0 leading-relaxed">
+                  Sign in with your educational credentials to access global syllabus standards, slide decks, and reference manuals.
                 </p>
+              </div>
+
+              {/* Form container for credentials */}
+              <form onSubmit={handleCredentialsLogin} className="space-y-3.5 text-left">
+                {authError && (
+                  <div className="p-3 text-xs bg-red-50 text-red-650 border border-red-100 rounded-xl font-semibold">
+                    ⚠️ {authError}
+                  </div>
+                )}
+                
+                <div className="space-y-1">
+                  <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    placeholder="e.g. instructor@example.com"
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-205 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-sans transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    placeholder="Enter your security password"
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-205 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-mono transition-all"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={authSubmitting}
+                  className="w-full py-2.5 bg-slate-900 hover:bg-slate-950 disabled:bg-slate-300 text-white font-sans font-bold rounded-xl text-xs shadow-md transition-all flex items-center justify-center gap-2.5 cursor-pointer hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0"
+                >
+                  {authSubmitting ? "Verifying..." : "Sign In with Credentials"}
+                </button>
+              </form>
+
+              {/* Divider */}
+              <div className="relative flex py-1 items-center">
+                <div className="flex-grow border-t border-slate-100"></div>
+                <span className="flex-shrink mx-3 text-[9px] text-slate-300 font-bold uppercase tracking-widest">or continue with</span>
+                <div className="flex-grow border-t border-slate-100"></div>
               </div>
 
               {/* Action sign-in container */}
-              <div className="pt-4 space-y-3">
+              <div className="space-y-3">
                 <button
                   id="btn-login-instructor"
+                  type="button"
                   onClick={handleLogin}
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-sans font-bold rounded-xl text-sm shadow-md transition-all flex items-center justify-center gap-2.5 cursor-pointer hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0"
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-sans font-bold rounded-xl text-xs shadow-sm transition-all flex items-center justify-center gap-2.5 cursor-pointer hover:shadow-md hover:-translate-y-0.5 active:translate-y-0"
                 >
-                  <Sparkles className="w-4 h-4 fill-current text-blue-200" /> Continue with Google Login
+                  <Sparkles className="w-4 h-4 fill-current text-blue-200 pointer-events-none" /> Continue with Google Auth
                 </button>
-                <p className="text-[10px] text-gray-400 flex items-center justify-center gap-1">
-                  <Lock className="w-3 h-3" /> Secure Google identity assertion.
-                </p>
               </div>
 
               {/* Informative Help Guide block */}
-              <div className="bg-gray-50 rounded-xl p-4 flex gap-3 text-left">
-                <div className="p-1 text-gray-400">
+              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex gap-3 text-left">
+                <div className="p-0.5 text-slate-400">
                   <HelpCircle className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-gray-700">Undergoing Setup?</h4>
-                  <p className="text-[10px] text-gray-500 mt-0.5 leading-relaxed">
-                    If this workspace has mock/offline database mode enabled, clicking register logs you instantly as a demo IC3 instructor with standard study curriculum templates pre-loaded!
+                  <h4 className="text-xs font-bold text-slate-705">Accessing the Workspace?</h4>
+                  <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">
+                    Please key in your secure instructor credentials above to authenticate and access the IC3 course slides, worksheets, and resources.
                   </p>
                 </div>
               </div>

@@ -4,7 +4,7 @@
  */
 
 import { initializeApp, getApp, getApps } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
 import { 
   getFirestore, 
   collection, 
@@ -234,16 +234,72 @@ export async function loginWithGoogle(): Promise<{ uid: string; displayName: str
   }
 }
 
-export async function logoutUser(): Promise<void> {
+export async function loginWithCredentials(email: string, password: string): Promise<{ uid: string; displayName: string | null; email: string | null; photoURL: string | null }> {
+  const trimmedEmail = email.trim();
+  const trimmedPassword = password.trim();
+
+  if (!trimmedEmail || !trimmedPassword) {
+    throw new Error("Please enter both your email address and password.");
+  }
+
+  // Try real Firebase Auth first, if configured
   if (isRealFirebaseConfigured && auth) {
-    await signOut(auth);
+    try {
+      const res = await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
+      const u = {
+        uid: res.user.uid,
+        displayName: res.user.displayName || trimmedEmail.split("@")[0],
+        email: res.user.email,
+        photoURL: res.user.photoURL || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&auto=format&fit=crop&q=60"
+      };
+      localStorage.setItem("ic3_platform_user", JSON.stringify(u));
+      return u;
+    } catch (err) {
+      console.warn("Firebase credential sign-in failed, checking fallback credentials...", err);
+    }
+  }
+
+  // Fallback to local credential checking
+  if (trimmedEmail === "nguyenhoanthao612@gmail.com" && trimmedPassword === "57717469") {
+    const mockUser = {
+      uid: "user-nguyenhoanthao612",
+      displayName: "Nguyen Hoan Thao",
+      email: "nguyenhoanthao612@gmail.com",
+      photoURL: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=120&auto=format&fit=crop&q=60"
+    };
+    localStorage.setItem("ic3_platform_user", JSON.stringify(mockUser));
+    return mockUser;
   } else {
-    offlineDb.logoutMock();
+    throw new Error("Invalid email or password. Use default credentials if offline.");
+  }
+}
+
+export async function logoutUser(): Promise<void> {
+  offlineDb.logoutMock();
+  if (isRealFirebaseConfigured && auth) {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.warn("Failed to sign out of Firebase:", err);
+    }
   }
 }
 
 // Subscribes to Authentication Changes
 export function subscribeToAuth(callback: (user: any | null) => void) {
+  // Check if we have a locally stored session (from credentials sign-in)
+  const initialUser = offlineDb.getLoggedInUser();
+  if (initialUser && initialUser.uid === "user-nguyenhoanthao612") {
+    callback(initialUser);
+    
+    // Simulate periodic listener for changes
+    const interval = setInterval(() => {
+      const u = offlineDb.getLoggedInUser();
+      callback(u);
+    }, 2000);
+    return () => clearInterval(interval);
+  }
+
   if (isRealFirebaseConfigured && auth) {
     return onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
@@ -254,12 +310,17 @@ export function subscribeToAuth(callback: (user: any | null) => void) {
           photoURL: firebaseUser.photoURL
         });
       } else {
-        callback(null);
+        // Fallback to local user if it was signed in locally
+        const u = offlineDb.getLoggedInUser();
+        if (u && u.uid === "user-nguyenhoanthao612") {
+          callback(u);
+        } else {
+          callback(null);
+        }
       }
     });
   } else {
     // Offline implementation triggers state with standard delay
-    const initialUser = offlineDb.getLoggedInUser();
     callback(initialUser);
     
     // Simulate periodic listener
