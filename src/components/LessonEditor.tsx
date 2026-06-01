@@ -55,6 +55,21 @@ export default function LessonEditor({
     setTimeout(() => setAlertMessage(null), 2500);
   };
 
+  // Keyboard shortcut listener for Ctrl+M (Save Changes)
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Allow Ctrl+M or Cmd+M to trigger save
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "m") {
+        e.preventDefault();
+        triggerSave(editedLesson);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [editedLesson]);
+
   // Lesson Level Details Edit
   const handleMetaChange = (field: keyof Lesson, value: any) => {
     const updated = { ...editedLesson, [field]: value };
@@ -384,8 +399,9 @@ export default function LessonEditor({
           <button
             onClick={() => triggerSave(editedLesson)}
             className="px-4 py-2 border border-gray-200 text-gray-700 hover:bg-gray-50 font-medium rounded-lg text-xs flex items-center gap-1.5 transition-all cursor-pointer font-sans"
+            title="Save Changes (Ctrl+M)"
           >
-            <Save className="w-3.5 h-3.5" /> Save Changes
+            <Save className="w-3.5 h-3.5" /> Save Changes <kbd className="text-[9.5px] text-gray-400 bg-gray-100 px-1 py-0.5 rounded border border-gray-200 font-sans ml-1 font-semibold">Ctrl+M</kbd>
           </button>
           <button
             id="editor-teach-now"
