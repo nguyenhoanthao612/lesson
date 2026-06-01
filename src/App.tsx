@@ -479,7 +479,14 @@ export default function App() {
                     setActiveLessonForEdit(updated);
                   }}
                   onBack={() => setActiveLessonForEdit(null)}
-                  onPresent={(lesson) => setActiveLessonForPresent(lesson)}
+                  onPresent={(lesson) => {
+                    handleSaveLesson(lesson);
+                    // also update current local array reference
+                    setLessons((curr) => curr.map((l) => (l.id === lesson.id ? lesson : l)));
+                    // synchronize active edit lesson to prevent reverting on remount
+                    setActiveLessonForEdit(lesson);
+                    setActiveLessonForPresent(lesson);
+                  }}
                 />
               ) : currentView === "resources" ? (
                 <ResourceLibrary

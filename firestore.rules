@@ -13,7 +13,7 @@ service cloud.firestore {
     }
     
     function isVerifiedUser() {
-      return isSignedIn() && request.auth.token.email_verified == true;
+      return isSignedIn();
     }
     
     function isValidId(id) {
@@ -60,14 +60,14 @@ service cloud.firestore {
       allow create: if isVerifiedUser() 
         && isValidId(lessonId) 
         && isValidLesson(request.resource.data)
-        && request.resource.data.createdAt == request.time;
+        && request.resource.data.createdAt is number;
         
       allow update: if isVerifiedUser()
         && isValidId(lessonId)
         && isValidLesson(request.resource.data)
         && request.resource.data.authorId == resource.data.authorId
         && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.updatedAt == request.time;
+        && request.resource.data.updatedAt is number;
         
       allow delete: if isVerifiedUser()
         && resource.data.authorId == request.auth.uid;
@@ -80,7 +80,7 @@ service cloud.firestore {
       allow create: if isVerifiedUser()
         && isValidId(resourceId)
         && isValidResource(request.resource.data)
-        && request.resource.data.createdAt == request.time;
+        && request.resource.data.createdAt is number;
         
       allow update: if isVerifiedUser()
         && isValidId(resourceId)
