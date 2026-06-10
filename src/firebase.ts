@@ -4,7 +4,7 @@
  */
 
 import { initializeApp, getApp, getApps } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
 import { 
   getFirestore, 
   collection, 
@@ -254,12 +254,29 @@ export async function loginWithCredentials(email: string, password: string): Pro
       };
       localStorage.setItem("ic3_platform_user", JSON.stringify(u));
       return u;
-    } catch (err) {
-      console.warn("Firebase credential sign-in failed, checking fallback credentials...", err);
+    } catch (err: any) {
+      console.warn("Firebase credential sign-in failed, checking auto-registration fallback...", err);
+      // Automatically register the instructor email in the real Firebase Auth backend to ensure remote DB synchronization
+      if (trimmedEmail === "nguyenhoanthao612@gmail.com" && trimmedPassword === "57717469" && (err.code === "auth/user-not-found" || err.code === "auth/invalid-login-credentials" || err.code === "auth/invalid-credential")) {
+        try {
+          console.info("Auto-registering teacher credentials on the active Firebase console...");
+          const res = await createUserWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
+          const u = {
+            uid: res.user.uid,
+            displayName: "Nguyen Hoan Thao",
+            email: res.user.email,
+            photoURL: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=120&auto=format&fit=crop&q=60"
+          };
+          localStorage.setItem("ic3_platform_user", JSON.stringify(u));
+          return u;
+        } catch (regErr) {
+          console.error("Auto-registration of cloud credential failed:", regErr);
+        }
+      }
     }
   }
 
-  // Fallback to local credential checking
+  // Fallback to local credential checking (for offline testing)
   if (trimmedEmail === "nguyenhoanthao612@gmail.com" && trimmedPassword === "57717469") {
     const mockUser = {
       uid: "user-nguyenhoanthao612",
@@ -338,12 +355,34 @@ export function subscribeToLessons(callback: (lessons: Lesson[]) => void) {
   const collectionName = "lessons";
   if (isRealFirebaseConfigured && db && auth?.currentUser) {
     const q = query(collection(db, collectionName), orderBy("updatedAt", "desc"));
-    return onSnapshot(q, (snapshot) => {
+    return onSnapshot(q, async (snapshot) => {
       const results: Lesson[] = [];
       snapshot.forEach((docSnap) => {
         results.push({ id: docSnap.id, ...docSnap.data() } as Lesson);
       });
-      callback(results);
+      
+      // If Firestore lessons collection is empty (e.g. fresh environment),
+      // we auto-seed the DEFAULT_LESSONS with the current active user's uid to bypass blank-canvases
+      if (results.length === 0) {
+        console.info("Firestore lessons database is empty. Auto-seeding default templates...");
+        const currentUid = auth.currentUser.uid;
+        const currentEmail = auth.currentUser.email || "teacher@ic3platform.com";
+        for (const defaultL of DEFAULT_LESSONS) {
+          try {
+            const seededLesson: Lesson = {
+              ...defaultL,
+              authorId: currentUid,
+              authorEmail: currentEmail,
+              updatedAt: Date.now()
+            };
+            await setDoc(doc(db, "lessons", defaultL.id), seededLesson);
+          } catch (err) {
+            console.error("Failed to seed default lesson into Firestore:", err);
+          }
+        }
+      } else {
+        callback(results);
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, collectionName);
     });
@@ -445,10 +484,15 @@ export async function deleteLesson(id: string): Promise<void> {
 
 // Duplicate Lesson
 export async function duplicateLesson(lesson: Lesson, newTitle?: string): Promise<Lesson> {
+  const currentUid = auth?.currentUser?.uid || "mock-uid-custom-teacher";
+  const currentEmail = auth?.currentUser?.email || "demo-teacher@ic3platform.edu";
+
   const duplicated: Lesson = {
     ...JSON.parse(JSON.stringify(lesson)), // Deep clone
     id: `lesson-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     title: newTitle || `${lesson.title} (Copy)`,
+    authorId: currentUid,
+    authorEmail: currentEmail,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -461,12 +505,25 @@ export function subscribeToResources(callback: (resources: FileResource[]) => vo
   const collectionName = "resources";
   if (isRealFirebaseConfigured && db && auth?.currentUser) {
     const q = query(collection(db, collectionName), orderBy("createdAt", "desc"));
-    return onSnapshot(q, (snapshot) => {
+    return onSnapshot(q, async (snapshot) => {
       const results: FileResource[] = [];
       snapshot.forEach((docSnap) => {
         results.push({ id: docSnap.id, ...docSnap.data() } as FileResource);
       });
-      callback(results);
+      
+      // If Firestore resources collection is empty, auto-seed default handouts
+      if (results.length === 0) {
+        console.info("Firestore resources collection is empty. Auto-seeding default guides...");
+        for (const defaultR of DEFAULT_RESOURCES) {
+          try {
+            await setDoc(doc(db, "resources", defaultR.id), defaultR);
+          } catch (err) {
+            console.error("Failed to seed default resource into Firestore:", err);
+          }
+        }
+      } else {
+        callback(results);
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, collectionName);
     });
