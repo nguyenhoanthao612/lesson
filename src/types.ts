@@ -85,6 +85,13 @@ export interface ContentBlock {
   videoTimestamp?: number;
   videoOptions?: string[];
   videoCorrectOptionIndex?: number;
+
+  // Free-form 16:9 canvas dimensions and coordinate percentages
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  zIndex?: number;
 }
 
 export interface LessonPage {

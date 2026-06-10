@@ -35,7 +35,8 @@ import {
   Video,
   Bold,
   Italic,
-  Highlighter
+  Highlighter,
+  Layers
 } from "lucide-react";
 import { Lesson, LessonPage, ContentBlock, BlockType, IC3Category } from "../types";
 
@@ -158,9 +159,545 @@ export default function LessonEditor({
   const [selectedParentForChild, setSelectedParentForChild] = useState("");
   const [newChildName, setNewChildName] = useState("");
 
+  // --- Visual Free-form Slide Canvas Editor States ---
+  const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+  const [isSnappingEnabled, setIsSnappingEnabled] = useState(true);
+  const [snapGridSize, setSnapGridSize] = useState(2); // 2% increments by default
+  const [isGridVisible, setIsGridVisible] = useState(true);
+
+  // Dragging / Resizing interaction states
+  const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
+  const [resizingBlockId, setResizingBlockId] = useState<string | null>(null);
+  const [resizeDirection, setResizeDirection] = useState<string | null>(null); // "tl" | "tr" | "bl" | "br" | "r" | "b" | "l" | "t"
+  const [dragStartCoords, setDragStartCoords] = useState<{
+    x: number;
+    y: number;
+    blockX: number;
+    blockY: number;
+    blockW: number;
+    blockH: number;
+  } | null>(null);
+
+  // Dynamic Alignment Guide lines
+  const [horizontalGuides, setHorizontalGuides] = useState<number[]>([]);
+  const [verticalGuides, setVerticalGuides] = useState<number[]>([]);
+
+  const canvasRef = React.useRef<HTMLDivElement>(null);
+  const editedLessonRef = React.useRef<Lesson>(editedLesson);
+
+  React.useEffect(() => {
+    editedLessonRef.current = editedLesson;
+  }, [editedLesson]);
+
+  // Normalize legacy slides content blocks to receive coordinates on the fly
+  React.useEffect(() => {
+    if (!activePage || !activePage.blocks) return;
+
+    let hasChanges = false;
+    const updatedBlocks = activePage.blocks.map((block, idx) => {
+      const updatedBlock = { ...block };
+      if (
+        block.x === undefined ||
+        block.y === undefined ||
+        block.width === undefined ||
+        block.height === undefined
+      ) {
+        hasChanges = true;
+        // Compute distributed positions
+        let defaultW = 40;
+        let defaultH = 25;
+        let defaultX = 10 + (idx % 2) * 45;
+        let defaultY = 15 + Math.floor(idx / 2) * 26;
+
+        if (block.type === BlockType.HEADING) {
+          defaultW = 80;
+          defaultH = 14;
+          defaultX = 10;
+          defaultY = 12;
+        } else if (block.type === BlockType.PARAGRAPH) {
+          defaultW = 70;
+          defaultH = 22;
+          defaultX = 15;
+          defaultY = 28;
+        } else if (block.type === BlockType.BULLET_LIST) {
+          defaultW = 45;
+          defaultH = 34;
+          defaultX = 10;
+          defaultY = 52;
+        } else if (block.type === BlockType.IMAGE) {
+          defaultW = 35;
+          defaultH = 34;
+          defaultX = 58;
+          defaultY = 52;
+        }
+
+        updatedBlock.x = defaultX;
+        updatedBlock.y = defaultY;
+        updatedBlock.width = defaultW;
+        updatedBlock.height = defaultH;
+        updatedBlock.zIndex = block.zIndex !== undefined ? block.zIndex : idx + 1;
+      }
+      return updatedBlock;
+    });
+
+    if (hasChanges) {
+      const updatedPages = [...editedLesson.pages];
+      updatedPages[activePageIndex] = {
+        ...activePage,
+        blocks: updatedBlocks
+      };
+      const updated = { ...editedLesson, pages: updatedPages };
+      setEditedLesson(updated);
+      onSave(updated);
+    }
+  }, [activePageIndex, activePage?.id]);
+
+  // Drag and Resize Position Updates
+  const updateBlockPositionInState = (id: string, updates: Partial<ContentBlock>) => {
+    setEditedLesson((prev) => {
+      const pagesCopy = [...prev.pages];
+      const pageIndex = activePageIndex;
+      const page = pagesCopy[pageIndex];
+      if (page) {
+        const updatedBlocks = page.blocks.map((b) => {
+          if (b.id === id) {
+            return { ...b, ...updates };
+          }
+          return b;
+        });
+        pagesCopy[pageIndex] = { ...page, blocks: updatedBlocks };
+      }
+      return { ...prev, pages: pagesCopy };
+    });
+  };
+
+  const calculateAlignmentGuides = (
+    activeId: string,
+    currentX: number,
+    currentY: number,
+    w: number,
+    h: number
+  ) => {
+    if (!activePage || !activePage.blocks) return;
+    const otherBlocks = activePage.blocks.filter((b) => b.id !== activeId);
+    
+    const hLines: number[] = [];
+    const vLines: number[] = [];
+
+    const activeLeft = currentX;
+    const activeCenterX = currentX + w / 2;
+    const activeRight = currentX + w;
+    const activeTop = currentY;
+    const activeCenterY = currentY + h / 2;
+    const activeBottom = currentY + h;
+
+    const threshold = 1.6; // percentage distance for snap guide trigger
+
+    // Snap-to-center line checks
+    if (Math.abs(activeCenterX - 50) < threshold) {
+      vLines.push(50);
+    }
+    if (Math.abs(activeCenterY - 50) < threshold) {
+      hLines.push(50);
+    }
+
+    otherBlocks.forEach((b) => {
+      const bx = b.x !== undefined ? b.x : 10;
+      const by = b.y !== undefined ? b.y : 10;
+      const bw = b.width !== undefined ? b.width : 40;
+      const bh = b.height !== undefined ? b.height : 25;
+
+      const bLeft = bx;
+      const bCenterX = bx + bw / 2;
+      const bRight = bx + bw;
+      const bTop = by;
+      const bCenterY = by + bh / 2;
+      const bBottom = by + bh;
+
+      // Vertical Alignments (Left / Center / Right)
+      if (Math.abs(activeLeft - bLeft) < threshold) vLines.push(bLeft);
+      if (Math.abs(activeCenterX - bCenterX) < threshold) vLines.push(bCenterX);
+      if (Math.abs(activeRight - bRight) < threshold) vLines.push(bRight);
+
+      // Horizontal Alignments (Top / Center / Bottom)
+      if (Math.abs(activeTop - bTop) < threshold) hLines.push(bTop);
+      if (Math.abs(activeCenterY - bCenterY) < threshold) hLines.push(bCenterY);
+      if (Math.abs(activeBottom - bBottom) < threshold) hLines.push(bBottom);
+    });
+
+    setHorizontalGuides(hLines);
+    setVerticalGuides(vLines);
+  };
+
+  // Dragging and Resizing Mouse Effect
+  React.useEffect(() => {
+    const handleGlobalMove = (e: MouseEvent) => {
+      if (!canvasRef.current || !dragStartCoords) return;
+
+      const rect = canvasRef.current.getBoundingClientRect();
+      const dxPixel = e.clientX - dragStartCoords.x;
+      const dyPixel = e.clientY - dragStartCoords.y;
+
+      const dxPercent = (dxPixel / rect.width) * 100;
+      const dyPercent = (dyPixel / rect.height) * 100;
+
+      const gridStep = isSnappingEnabled ? snapGridSize : 0.5;
+
+      if (draggingBlockId) {
+        let newX = dragStartCoords.blockX + dxPercent;
+        let newY = dragStartCoords.blockY + dyPercent;
+
+        if (isSnappingEnabled) {
+          newX = Math.round(newX / gridStep) * gridStep;
+          newY = Math.round(newY / gridStep) * gridStep;
+        }
+
+        // slide boundaries (avoid overlapping header outside y=12%)
+        newX = Math.max(0, Math.min(100 - dragStartCoords.blockW, newX));
+        newY = Math.max(0, Math.min(100 - dragStartCoords.blockH, newY));
+
+        calculateAlignmentGuides(draggingBlockId, newX, newY, dragStartCoords.blockW, dragStartCoords.blockH);
+        updateBlockPositionInState(draggingBlockId, { x: newX, y: newY });
+      } else if (resizingBlockId && resizeDirection) {
+        let newX = dragStartCoords.blockX;
+        let newY = dragStartCoords.blockY;
+        let newW = dragStartCoords.blockW;
+        let newH = dragStartCoords.blockH;
+
+        if (resizeDirection.includes("r")) {
+          newW = dragStartCoords.blockW + dxPercent;
+          if (isSnappingEnabled) newW = Math.round(newW / gridStep) * gridStep;
+          newW = Math.max(10, Math.min(100 - newX, newW));
+        } else if (resizeDirection.includes("l")) {
+          const rawLeft = dragStartCoords.blockX + dxPercent;
+          let snappedLeft = rawLeft;
+          if (isSnappingEnabled) snappedLeft = Math.round(snappedLeft / gridStep) * gridStep;
+          const diffX = dragStartCoords.blockX - snappedLeft;
+          const possibleW = dragStartCoords.blockW + diffX;
+          if (possibleW >= 10 && snappedLeft >= 0) {
+            newX = snappedLeft;
+            newW = possibleW;
+          }
+        }
+
+        if (resizeDirection.includes("b")) {
+          newH = dragStartCoords.blockH + dyPercent;
+          if (isSnappingEnabled) newH = Math.round(newH / gridStep) * gridStep;
+          newH = Math.max(8, Math.min(100 - newY, newH));
+        } else if (resizeDirection.includes("t")) {
+          const rawTop = dragStartCoords.blockY + dyPercent;
+          let snappedTop = rawTop;
+          if (isSnappingEnabled) snappedTop = Math.round(snappedTop / gridStep) * gridStep;
+          const diffY = dragStartCoords.blockY - snappedTop;
+          const possibleH = dragStartCoords.blockH + diffY;
+          if (possibleH >= 8 && snappedTop >= 0) {
+            newY = snappedTop;
+            newH = possibleH;
+          }
+        }
+
+        calculateAlignmentGuides(resizingBlockId, newX, newY, newW, newH);
+        updateBlockPositionInState(resizingBlockId, { x: newX, y: newY, width: newW, height: newH });
+      }
+    };
+
+    const handleGlobalUp = () => {
+      if (draggingBlockId || resizingBlockId) {
+        setDraggingBlockId(null);
+        setResizingBlockId(null);
+        setResizeDirection(null);
+        setDragStartCoords(null);
+        setHorizontalGuides([]);
+        setVerticalGuides([]);
+        // Save database properties
+        onSave(editedLessonRef.current);
+      }
+    };
+
+    if (draggingBlockId || resizingBlockId) {
+      window.addEventListener("mousemove", handleGlobalMove);
+      window.addEventListener("mouseup", handleGlobalUp);
+    }
+
+    return () => {
+      window.removeEventListener("mousemove", handleGlobalMove);
+      window.removeEventListener("mouseup", handleGlobalUp);
+    };
+  }, [draggingBlockId, resizingBlockId, resizeDirection, dragStartCoords, isSnappingEnabled, snapGridSize]);
+
+  // Handler to initialize coordinate tracking when resizing blocks
+  const handleResizeStart = (e: React.MouseEvent, block: ContentBlock, direction: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!canvasRef.current) return;
+    setResizingBlockId(block.id);
+    setResizeDirection(direction);
+    setDragStartCoords({
+      x: e.clientX,
+      y: e.clientY,
+      blockX: block.x !== undefined ? block.x : 10,
+      blockY: block.y !== undefined ? block.y : 10,
+      blockW: block.width !== undefined ? block.width : 45,
+      blockH: block.height !== undefined ? block.height : 25,
+    });
+  };
+
+  // Synchronous page save changes
+  const commitCanvasBlocks = (updatedBlocks: ContentBlock[]) => {
+    const updatedPages = [...editedLesson.pages];
+    updatedPages[activePageIndex] = {
+      ...activePage,
+      blocks: updatedBlocks
+    };
+    const updated = { ...editedLesson, pages: updatedPages };
+    setEditedLesson(updated);
+    onSave(updated);
+  };
+
+  // Adjust z-index layering forward and backward
+  const adjustZIndex = (blockId: string, action: "forward" | "backward" | "front" | "back") => {
+    if (!activePage || !activePage.blocks) return;
+    const block = activePage.blocks.find((b) => b.id === blockId);
+    if (!block) return;
+
+    const otherZs = activePage.blocks.filter((b) => b.id !== blockId).map((b) => b.zIndex ?? 1);
+    const maxZ = otherZs.length > 0 ? Math.max(...otherZs) : 1;
+    const minZ = otherZs.length > 0 ? Math.min(...otherZs) : 1;
+
+    let nextZ = block.zIndex ?? 1;
+    if (action === "forward") {
+      nextZ = nextZ + 1;
+    } else if (action === "backward") {
+      nextZ = Math.max(1, nextZ - 1);
+    } else if (action === "front") {
+      nextZ = maxZ + 1;
+    } else if (action === "back") {
+      nextZ = Math.max(1, minZ - 1);
+    }
+
+    const updatedBlocks = activePage.blocks.map((b) =>
+      b.id === blockId ? { ...b, zIndex: nextZ } : b
+    );
+    commitCanvasBlocks(updatedBlocks);
+  };
+
+  // Auto-align element relative to slide bounding coordinates
+  const alignActiveBlock = (alignment: "left" | "center" | "right" | "top" | "middle" | "bottom") => {
+    if (!activeBlockId || !activePage || !activePage.blocks) return;
+    const block = activePage.blocks.find((b) => b.id === activeBlockId);
+    if (!block) return;
+
+    const w = block.width !== undefined ? block.width : 40;
+    const h = block.height !== undefined ? block.height : 25;
+
+    const updates: Partial<ContentBlock> = {};
+    if (alignment === "left") updates.x = 2;
+    else if (alignment === "center") updates.x = (100 - w) / 2;
+    else if (alignment === "right") updates.x = 100 - w - 2;
+    else if (alignment === "top") updates.y = 12; // lower than slide title bar (0-10%)
+    else if (alignment === "middle") updates.y = 12 + (88 - h) / 2;
+    else if (alignment === "bottom") updates.y = 100 - h - 2;
+
+    const updatedBlocks = activePage.blocks.map((b) =>
+      b.id === activeBlockId ? { ...b, ...updates } : b
+    );
+    commitCanvasBlocks(updatedBlocks);
+  };
+
+
   // Helper to get active slide topic
   const getPageTopic = (page: LessonPage): string => {
     return page.topic?.trim() || editedLesson.topic?.trim() || "General Topic";
+  };
+
+  // Helper to render accurate slide content thumbnails on the canvas
+  const renderCanvasBlockPreview = (b: ContentBlock) => {
+    switch (b.type) {
+      case BlockType.HEADING:
+        return (
+          <div className="h-full w-full select-none pr-1">
+            <h3 className="text-xs md:text-sm font-sans font-extrabold text-blue-600 dark:text-blue-400 border-l-2 border-blue-500 pl-1 leading-tight uppercase tracking-wide truncate">
+              {b.headingText || "Blank Title Header"}
+            </h3>
+          </div>
+        );
+      case BlockType.PARAGRAPH:
+        return (
+          <div className="h-full w-full select-none text-[8px] sm:text-[10px] leading-snug text-gray-600 dark:text-gray-300 pr-1 overflow-hidden">
+            <p className="line-clamp-4 font-sans">{b.paragraphText || "Empty paragraph text modular content..."}</p>
+          </div>
+        );
+      case BlockType.BULLET_LIST:
+        return (
+          <div className="h-full w-full select-none text-[8px] sm:text-[9.5px] text-gray-700 dark:text-slate-300 pr-1 overflow-hidden font-sans">
+            <ul className="space-y-0.5 list-disc pl-3">
+              {(b.listItems || []).slice(0, 3).map((bullet, idx) => (
+                <li key={idx} className="marker:text-blue-500 truncate">
+                  {bullet}
+                </li>
+              ))}
+              {(b.listItems || []).length > 3 && (
+                <li className="list-none text-gray-400 italic text-[7px]">
+                  + {(b.listItems || []).length - 3} more
+                </li>
+              )}
+            </ul>
+          </div>
+        );
+      case BlockType.IMAGE:
+        return (
+          <div className="h-full w-full relative select-none rounded bg-gray-50 border border-gray-100 flex flex-col justify-between overflow-hidden">
+            {b.mediaUrl ? (
+              <img src={b.mediaUrl} alt={b.mediaCaption} referrerPolicy="no-referrer" className="w-full h-full object-cover flex-1 min-h-0" />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-gray-400 text-[8px]">No image provided</div>
+            )}
+            {b.mediaCaption && (
+              <div className="bg-black/50 text-white text-[7px] truncate p-0.5 absolute bottom-0 left-0 right-0">{b.mediaCaption}</div>
+            )}
+          </div>
+        );
+      case BlockType.YOUTUBE:
+        return (
+          <div className="h-full w-full select-none rounded bg-black flex flex-col items-center justify-center text-white relative">
+            <Video className="w-4 h-4 text-red-650" />
+            <span className="text-[7.5px] text-gray-300 truncate max-w-full px-1">YouTube Media Stream</span>
+          </div>
+        );
+      case BlockType.DEFINITION_BOX:
+        return (
+          <div className="h-full w-full select-none border-l-2 border-blue-600 p-1 bg-blue-50/45 dark:bg-blue-950/20 text-left overflow-hidden pr-1 font-sans">
+            <span className="text-[6.5px] font-bold text-blue-500 uppercase tracking-widest block">DEFINITION</span>
+            <h4 className="text-[9px] font-bold text-blue-950 dark:text-blue-200 truncate">{b.definitionTerm || "Concept Term"}</h4>
+            <p className="text-[7.5px] text-blue-900 mt-0.5 line-clamp-2 leading-tight">{b.definitionText}</p>
+          </div>
+        );
+      case BlockType.IMPORTANT_NOTE:
+        return (
+          <div className="h-full w-full select-none border-l-2 border-amber-500 p-1 bg-amber-50/45 dark:bg-amber-950/20 text-left overflow-hidden pr-1 font-sans">
+            <span className="text-[6.5px] font-bold text-amber-600 uppercase tracking-widest block">EXAM TARGET</span>
+            <p className="text-[8.5px] text-amber-950 dark:text-amber-100 leading-tight font-semibold line-clamp-3">{b.noteText || "Core critical notes here..."}</p>
+          </div>
+        );
+      case BlockType.EXAMPLE_BOX:
+        return (
+          <div className="h-full w-full select-none border-l-2 border-indigo-600 p-1 bg-indigo-50/45 dark:bg-indigo-950/20 text-left overflow-hidden flex flex-col pr-1 font-sans">
+            <span className="text-[6.5px] font-bold text-indigo-500 uppercase tracking-widest block">LAB WORK</span>
+            <h4 className="text-[9px] font-bold text-indigo-950 truncate">{b.exampleTitle || "Example Lab"}</h4>
+            <pre className="text-[7px] bg-slate-900 text-emerald-400 p-0.5 rounded font-mono truncate">
+              {b.exampleText}
+            </pre>
+          </div>
+        );
+      case BlockType.PRACTICE_ACTIVITY:
+        return (
+          <div className="h-full w-full select-none border-l-2 border-teal-600 p-1 bg-teal-50/45 dark:bg-teal-950/20 text-left overflow-hidden pr-1 font-sans">
+            <span className="text-[6.5px] font-bold text-teal-650 uppercase tracking-widest block">SANDBOX LAB</span>
+            <h4 className="text-[9px] font-bold text-teal-950 truncate">{b.activityTitle || "Coding Activity"}</h4>
+            <p className="text-[7.5px] text-teal-900 line-clamp-2 leading-tight">{b.activityText}</p>
+          </div>
+        );
+      case BlockType.TABLE:
+        return (
+          <div className="h-full w-full select-none overflow-hidden text-[7px] bg-white border border-gray-150 rounded flex flex-col font-sans">
+            <div className="font-bold flex border-b border-gray-150 bg-gray-50 py-0.5 px-0.5">
+              {(b.tableHeaders || []).slice(0, 3).map((h, hIdx) => (
+                <div key={hIdx} className="flex-1 px-0.5 truncate">{h}</div>
+              ))}
+            </div>
+            <div className="flex-1 overflow-hidden space-y-0.5 p-0.5">
+              {(b.tableRows || []).slice(0, 2).map((row, rIdx) => (
+                <div key={rIdx} className="flex border-b border-gray-100 pb-0.5">
+                  {row.slice(0, 3).map((cell, cIdx) => (
+                    <div key={cIdx} className="flex-1 px-0.5 text-gray-500 truncate">{cell.value}</div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      case BlockType.QUESTION_SINGLE:
+      case BlockType.QUESTION_MULTIPLE:
+        return (
+          <div className="h-full w-full select-none p-1.5 rounded border border-blue-100 bg-blue-50/25 text-left overflow-hidden flex flex-col justify-between font-sans">
+            <div className="leading-tight">
+              <span className="px-1 py-0.2 bg-blue-600 text-white rounded-[2px] text-[5.5px] font-bold uppercase block w-fit mb-0.5">
+                {b.type === BlockType.QUESTION_SINGLE ? "Single Choice" : "Multi Choice"}
+              </span>
+              <h4 className="text-[8.5px] font-extrabold text-gray-900 truncate">
+                {b.questionText || "Question text?"}
+              </h4>
+            </div>
+            <div className="space-y-0.5 flex-1 min-h-0 overflow-hidden mt-0.5">
+              {(b.questionOptions || []).slice(0, 2).map((opt, oIdx) => (
+                <div key={oIdx} className="w-full text-left p-0.5 border rounded bg-white text-[7.5px] truncate flex items-center justify-between">
+                  <span className="truncate">{opt}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      case BlockType.QUESTION_DRAG_DROP:
+        return (
+          <div className="h-full w-full select-none p-1.5 rounded border border-emerald-100 bg-emerald-50/25 text-left overflow-hidden flex flex-col justify-between font-sans">
+            <div className="leading-tight">
+              <span className="px-1 py-0.2 bg-emerald-600 text-white rounded-[2px] text-[5.5px] font-bold uppercase block w-fit mb-0.5">
+                Drag & Match
+              </span>
+              <h4 className="text-[8.5px] font-extrabold text-gray-900 truncate">
+                {b.questionText || "Match components"}
+              </h4>
+            </div>
+            <div className="flex-1 mt-0.5 overflow-hidden text-[7px] space-y-0.5">
+              {(b.dragDropPairs || []).slice(0, 1).map((pair, pIdx) => (
+                <div key={pIdx} className="flex gap-0.5 items-center bg-white p-0.5 border rounded truncate">
+                  <span className="font-bold text-emerald-800 shrink-0">{pair.item}</span>
+                  <span className="text-gray-400">➔</span>
+                  <span className="truncate text-gray-500">{pair.zone}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      case BlockType.QUESTION_HOTSPOT:
+        return (
+          <div className="h-full w-full select-none p-1.5 rounded border border-amber-100 bg-amber-50/25 text-left overflow-hidden flex flex-col justify-between font-sans">
+            <div className="leading-tight">
+              <span className="px-1 py-0.2 bg-amber-500 text-white rounded-[2px] text-[5.5px] font-bold uppercase block w-fit mb-0.5">
+                Hotspot Diagram
+              </span>
+              <h4 className="text-[8.5px] font-extrabold text-gray-900 truncate">
+                {b.questionText || "Click area"}
+              </h4>
+            </div>
+            <div className="flex-1 w-full bg-slate-100 rounded flex items-center justify-center text-[7px] text-gray-400 border border-gray-150 relative overflow-hidden mt-0.5">
+              {b.hotspotImageUrl ? (
+                <img src={b.hotspotImageUrl} className="w-full h-full object-cover" />
+              ) : (
+                <span>No diagram loaded</span>
+              )}
+            </div>
+          </div>
+        );
+      case BlockType.QUESTION_VIDEO:
+        return (
+          <div className="h-full w-full select-none p-1.5 rounded border border-red-100 bg-red-50/25 text-left overflow-hidden flex flex-col justify-between font-sans">
+            <div className="leading-tight">
+              <span className="px-1 py-0.2 bg-red-650 text-white rounded-[2px] text-[5.5px] font-bold uppercase block w-fit mb-0.5">
+                Video Question
+              </span>
+              <h4 className="text-[8.5px] font-extrabold text-gray-900 truncate">
+                {b.videoQuestionText || "Video prompt"}
+              </h4>
+            </div>
+            <div className="flex-1 w-full bg-slate-900 rounded flex flex-col items-center justify-center text-[7px] text-slate-350 py-0.5 mt-0.5">
+              <Video className="w-3.5 h-3.5 text-red-500" />
+            </div>
+          </div>
+        );
+      default:
+        return <div className="text-[8px] text-gray-400">Dynamic Element: {b.type}</div>;
+    }
   };
 
   // Helper to group pages dynamically by their parent and child topics
@@ -547,6 +1084,40 @@ export default function LessonEditor({
         break;
     }
 
+    // Set responsive defaults on the 16:9 canvas
+    let defaultW = 40;
+    let defaultH = 25;
+    let defaultX = 30;
+    let defaultY = 30;
+
+    if (type === BlockType.HEADING) {
+      defaultW = 80;
+      defaultH = 14;
+      defaultX = 10;
+      defaultY = 12; // fits nicely below the top header (y=0 to y=10%)
+    } else if (type === BlockType.PARAGRAPH) {
+      defaultW = 70;
+      defaultH = 22;
+      defaultX = 15;
+      defaultY = 28;
+    } else if (type === BlockType.BULLET_LIST) {
+      defaultW = 45;
+      defaultH = 34;
+      defaultX = 10;
+      defaultY = 52;
+    } else if (type === BlockType.IMAGE) {
+      defaultW = 35;
+      defaultH = 34;
+      defaultX = 58;
+      defaultY = 52;
+    }
+
+    newBlock.x = defaultX;
+    newBlock.y = defaultY;
+    newBlock.width = defaultW;
+    newBlock.height = defaultH;
+    newBlock.zIndex = (activePage?.blocks?.length || 0) + 1;
+
     const updatedPages = [...editedLesson.pages];
     updatedPages[activePageIndex] = {
       ...activePage,
@@ -555,6 +1126,7 @@ export default function LessonEditor({
 
     const updated = { ...editedLesson, pages: updatedPages };
     triggerSave(updated);
+    setActiveBlockId(newBlock.id);
   };
 
   // --- Block-level modifications ---
@@ -1273,56 +1845,344 @@ export default function LessonEditor({
 
           <div className="p-6 space-y-6">
             
-            {/* Interactive Block list workspace on active slide page */}
-            {(!activePage.blocks || activePage.blocks.length === 0) ? (
-              <div className="border border-dashed border-gray-200 rounded-xl p-8 text-center space-y-3">
-                <div className="h-10 w-10 bg-gray-50 text-gray-400 rounded-full flex items-center justify-center mx-auto">
-                  <Grid className="w-5 h-5 animate-pulse" />
+            {/* Visual 16:9 Presentation Canvas Container */}
+            <div className="space-y-4 font-sans">
+              <div className="flex flex-wrap items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs text-gray-650 font-medium select-none">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-gray-800">Fixed 16:9 Slide Canvas</span>
+                  <span className="bg-blue-100 text-blue-700 font-extrabold px-1.5 py-0.5 rounded text-[8px] uppercase">16:9 Ratio</span>
                 </div>
-                <h5 className="font-bold text-gray-800 text-sm">Slide holds zero teaching blocks</h5>
-                <p className="text-xs text-gray-500 max-w-sm mx-auto">
-                  No elements have been inserted. Select from the tool suite below to add headings, notes, lists, or tables.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-6" id="editor-page-blocks-list">
-                {activePage.blocks.map((block, idx) => (
-                  <div
-                    key={block.id}
-                    id={`block-wrapper-${block.id}`}
-                    className="border border-gray-100 hover:border-blue-200 rounded-xl p-4 shadow-2xs hover:shadow-xs transition-all relative group bg-white"
-                  >
-                    
-                    {/* Block Toolbar Action Overlay (Hover visible) */}
-                    <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 flex items-center gap-1 bg-white border border-gray-100 rounded-lg p-1 shadow-sm transition-all z-10">
-                      <button
-                        onClick={() => handleMoveBlock(block.id, "up")}
-                        disabled={idx === 0}
-                        className="p-1 rounded-sm text-gray-450 hover:bg-gray-50 disabled:opacity-30"
-                        title="Move Block Up"
+                <div className="flex items-center gap-4 mt-1 sm:mt-0">
+                  <label className="flex items-center gap-1.5 cursor-pointer hover:text-gray-800 select-none">
+                    <input 
+                      type="checkbox" 
+                      checked={isSnappingEnabled} 
+                      onChange={(e) => setIsSnappingEnabled(e.target.checked)}
+                      className="rounded border-gray-300 text-blue-650 focus:ring-blue-500 w-3.5 h-3.5" 
+                    />
+                    <span>🧲 Snap grid</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer hover:text-gray-800 select-none">
+                    <input 
+                      type="checkbox" 
+                      checked={isGridVisible} 
+                      onChange={(e) => setIsGridVisible(e.target.checked)}
+                      className="rounded border-gray-300 text-blue-650 focus:ring-blue-500 w-3.5 h-3.5" 
+                    />
+                    <span>👁️ Show grid</span>
+                  </label>
+                  {isSnappingEnabled && (
+                    <div className="flex items-center gap-1 bg-white border border-gray-200 rounded px-1.5 py-0.5 text-[9.5px] select-none">
+                      <span className="text-gray-400">Step:</span>
+                      <select 
+                        value={snapGridSize} 
+                        onChange={(e) => setSnapGridSize(parseInt(e.target.value) || 2)}
+                        className="bg-transparent border-0 p-0 text-[9.5px] font-bold text-slate-800 focus:outline-hidden focus:ring-0 cursor-pointer"
                       >
-                        <MoveUp className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleMoveBlock(block.id, "down")}
-                        disabled={idx === activePage.blocks.length - 1}
-                        className="p-1 rounded-sm text-gray-450 hover:bg-gray-50 disabled:opacity-30"
-                        title="Move Block Down"
-                      >
-                        <MoveDown className="w-3.5 h-3.5" />
-                      </button>
-                      <div className="h-4 w-px bg-gray-100 mx-1" />
-                      <button
-                        onClick={() => handleDeleteBlock(block.id)}
-                        className="p-1 rounded-sm text-red-500 hover:bg-red-50"
-                        title="Delete Block"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                        <option value={1}>1%</option>
+                        <option value={2}>2%</option>
+                        <option value={5}>5%</option>
+                        <option value={10}>10%</option>
+                      </select>
                     </div>
+                  )}
+                </div>
+              </div>
 
-                    {/* Block Content Selector Switch */}
-                    <div className="space-y-3">
+              {/* The fixed 16:9 visual Slide Stage */}
+              <div 
+                ref={canvasRef}
+                className="w-full aspect-video border border-slate-300 relative rounded-2xl bg-white shadow-xs overflow-hidden select-none"
+                style={{
+                  backgroundImage: isGridVisible ? 'radial-gradient(#e2e8f0 1.2px, transparent 1.2px)' : 'none',
+                  backgroundSize: '20px 20px',
+                }}
+              >
+                {/* Horizontal Alignment Guide lines */}
+                {horizontalGuides.map((guide, idx) => (
+                  <div 
+                    key={`h-${idx}`}
+                    className="absolute left-0 right-0 border-t border-dashed border-red-500 z-50 pointer-events-none text-[8px]"
+                    style={{ top: `${guide}%` }}
+                  />
+                ))}
+
+                {/* Vertical Alignment Guide lines */}
+                {verticalGuides.map((guide, idx) => (
+                  <div 
+                    key={`v-${idx}`}
+                    className="absolute top-0 bottom-0 border-l border-dashed border-red-500 z-50 pointer-events-none text-[8px]"
+                    style={{ left: `${guide}%` }}
+                  />
+                ))}
+
+                {/* Persistent 16:9 Presentation Slide Title Banner (Takes up top 11% height) */}
+                <div className="absolute top-0 left-0 right-0 h-[11%] bg-gradient-to-r from-slate-50 to-white border-b border-gray-200 px-5 flex items-center justify-between z-10 shadow-3xs">
+                  <h2 className="text-xs md:text-sm font-bold font-sans tracking-tight text-slate-800 flex items-center gap-1.5 truncate">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0"></span>
+                    {activePage.title || "Untitled Presentation Slide"}
+                  </h2>
+                  <span className="text-[8.5px] uppercase tracking-wider font-extrabold text-blue-600 bg-blue-50 px-2 py-0.5 rounded shrink-0">
+                    Syllabus Section Slide
+                  </span>
+                </div>
+
+                {/* Slide Absolute Components Layer Stage (y=11% to y=100%) */}
+                <div className="absolute top-[11%] left-0 right-0 bottom-0 overflow-hidden">
+                  {(!activePage.blocks || activePage.blocks.length === 0) ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-center p-6 space-y-2">
+                      <Grid className="w-6 h-6 text-gray-300 animate-pulse" />
+                      <h4 className="font-bold text-xs text-slate-650">Slide canvas is currently empty</h4>
+                      <p className="text-[10px] text-gray-400 max-w-sm">
+                        Use the Components Suite below to insert dynamic headings, text modules, code templates, or interactive exam questions!
+                      </p>
+                    </div>
+                  ) : (
+                    activePage.blocks.map((block, idx) => {
+                      const bgStyle = block.id === activeBlockId 
+                        ? "shadow-sm border border-blue-500 ring-2 ring-blue-500/15" 
+                        : "border border-gray-200 shadow-3xs hover:border-blue-400 hover:shadow-2xs";
+
+                      // Compute default if undefined on the fly
+                      const x = block.x !== undefined ? block.x : 10 + (idx % 2) * 45;
+                      const y = block.y !== undefined ? block.y : 15 + Math.floor(idx / 2) * 26;
+                      const w = block.width !== undefined ? block.width : 40;
+                      const h = block.height !== undefined ? block.height : 25;
+                      const z = block.zIndex !== undefined ? block.zIndex : idx + 1;
+
+                      // Make sure coordinates fit in container
+                      const cleanY = Math.max(0, Math.min(100 - h, y));
+                      const cleanX = Math.max(0, Math.min(100 - w, x));
+
+                      return (
+                        <div
+                          key={block.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveBlockId(block.id);
+                          }}
+                          className={`absolute rounded-xl bg-white dark:bg-slate-900 cursor-grab p-3 flex flex-col justify-between overflow-hidden ${bgStyle}`}
+                          style={{
+                            left: `${cleanX}%`,
+                            top: `${cleanY}%`,
+                            width: `${w}%`,
+                            height: `${h}%`,
+                            zIndex: z,
+                          }}
+                        >
+                          {/* Inner Content Component Render Preview */}
+                          <div className="flex-1 min-h-0 w-full overflow-y-auto mb-1 scrollbar-none select-none text-left pointer-events-none">
+                            {renderCanvasBlockPreview(block)}
+                          </div>
+
+                          {/* Quick drag/resize controller & active overlay */}
+                          {block.id === activeBlockId && (
+                            <>
+                              {/* Drag Handles on borders */}
+                              <div 
+                                onMouseDown={(e) => {
+                                  if ((e.target as HTMLElement).tagName === "BUTTON" || (e.target as HTMLElement).closest("button")) return;
+                                  if (!canvasRef.current) return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setDraggingBlockId(block.id);
+                                  setDragStartCoords({
+                                    x: e.clientX,
+                                    y: e.clientY,
+                                    blockX: x,
+                                    blockY: y,
+                                    blockW: w,
+                                    blockH: h,
+                                  });
+                                }}
+                                className="absolute inset-0 border-2 border-transparent hover:border-blue-400 rounded-xl cursor-move"
+                              />
+
+                              {/* Tiny Corner Resizing Knobs */}
+                              {/* Top-Left */}
+                              <div 
+                                className="absolute top-0 left-0 w-2.5 h-2.5 bg-white border border-blue-600 rounded-full cursor-nwse-resize z-[100] shadow-xs -translate-x-[4px] -translate-y-[4px]"
+                                onMouseDown={(e) => {
+                                  e.stopPropagation();
+                                  handleResizeStart(e, block, "tl");
+                                }}
+                              />
+                              {/* Top-Right */}
+                              <div 
+                                className="absolute top-0 right-0 w-2.5 h-2.5 bg-white border border-blue-600 rounded-full cursor-nesw-resize z-[100] shadow-xs translate-x-[4px] -translate-y-[4px]"
+                                onMouseDown={(e) => {
+                                  e.stopPropagation();
+                                  handleResizeStart(e, block, "tr");
+                                }}
+                              />
+                              {/* Bottom-Left */}
+                              <div 
+                                className="absolute bottom-0 left-0 w-2.5 h-2.5 bg-white border border-blue-600 rounded-full cursor-nesw-resize z-[100] shadow-xs -translate-x-[4px] translate-y-[4px]"
+                                onMouseDown={(e) => {
+                                  e.stopPropagation();
+                                  handleResizeStart(e, block, "bl");
+                                }}
+                              />
+                              {/* Bottom-Right */}
+                              <div 
+                                className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-white border border-blue-600 rounded-full cursor-nwse-resize z-[100] shadow-xs translate-x-[4px] translate-y-[4px]"
+                                onMouseDown={(e) => {
+                                  e.stopPropagation();
+                                  handleResizeStart(e, block, "br");
+                                }}
+                              />
+
+                              {/* Floating quick Action Bar on selected Card */}
+                              <div className="absolute right-1.5 top-1.5 flex items-center gap-0.5 bg-white border border-gray-150 rounded-lg p-0.5 shadow-md z-[90]">
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); adjustZIndex(block.id, "forward"); }}
+                                  className="p-1 rounded text-gray-500 hover:bg-gray-100"
+                                  title="Bring Layer Forward"
+                                >
+                                  <Layers className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteBlock(block.id); }}
+                                  className="p-1 rounded text-red-500 hover:bg-red-50"
+                                  title="Delete Element From Slide Page"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Block Editor Inspection Panel */}
+            {activeBlockId && activePage.blocks.find(b => b.id === activeBlockId) ? (
+              <div className="border border-gray-200 rounded-2xl bg-slate-50 p-5 mt-6 space-y-4 shadow-3xs relative">
+                {/* Placement Inspector & Alignment System */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-gray-200 pb-3 gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 font-sans border border-blue-200 rounded-lg text-xs font-bold uppercase tracking-wider">
+                      Element Configuration Panel
+                    </span>
+                    <button 
+                      type="button"
+                      onClick={() => setActiveBlockId(null)}
+                      className="text-xs text-gray-550 hover:text-gray-900 border border-gray-200 bg-white rounded-md px-2 py-0.5 hover:shadow-3xs transition"
+                    >
+                      Deselect
+                    </button>
+                  </div>
+
+                  {/* Coords Manual Overrides */}
+                  {(() => {
+                    const block = activePage.blocks.find(b => b.id === activeBlockId);
+                    if (!block) return null;
+                    return (
+                      <div className="flex flex-wrap items-center gap-3 text-[11px] font-semibold text-gray-600 font-sans">
+                        <div className="flex items-center gap-1 bg-white px-2 py-1 border rounded-lg">
+                          <span>X:</span>
+                          <input 
+                            type="number" 
+                            value={Math.round(block.x ?? 10)} 
+                            onChange={(e) => {
+                              const val = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
+                              updateBlockPositionInState(block.id, { x: val });
+                              onSave(editedLessonRef.current);
+                            }}
+                            className="w-8 border-0 p-0 text-center font-bold text-gray-800 focus:outline-hidden focus:ring-0"
+                          />
+                          <span>%</span>
+                        </div>
+                        <div className="flex items-center gap-1 bg-white px-2 py-1 border rounded-lg">
+                          <span>Y:</span>
+                          <input 
+                            type="number" 
+                            value={Math.round(block.y ?? 10)} 
+                            onChange={(e) => {
+                              const val = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
+                              updateBlockPositionInState(block.id, { y: val });
+                              onSave(editedLessonRef.current);
+                            }}
+                            className="w-8 border-0 p-0 text-center font-bold text-gray-800 focus:outline-hidden focus:ring-0"
+                          />
+                          <span>%</span>
+                        </div>
+                        <div className="flex items-center gap-1 bg-white px-2 py-1 border rounded-lg">
+                          <span>W:</span>
+                          <input 
+                            type="number" 
+                            value={Math.round(block.width ?? 40)} 
+                            onChange={(e) => {
+                              const val = Math.max(5, Math.min(100, parseInt(e.target.value) || 0));
+                              updateBlockPositionInState(block.id, { width: val });
+                              onSave(editedLessonRef.current);
+                            }}
+                            className="w-8 border-0 p-0 text-center font-bold text-gray-800 focus:outline-hidden focus:ring-0"
+                          />
+                          <span>%</span>
+                        </div>
+                        <div className="flex items-center gap-1 bg-white px-2 py-1 border rounded-lg">
+                          <span>H:</span>
+                          <input 
+                            type="number" 
+                            value={Math.round(block.height ?? 25)} 
+                            onChange={(e) => {
+                              const val = Math.max(5, Math.min(100, parseInt(e.target.value) || 0));
+                              updateBlockPositionInState(block.id, { height: val });
+                              onSave(editedLessonRef.current);
+                            }}
+                            className="w-8 border-0 p-0 text-center font-bold text-gray-800 focus:outline-hidden focus:ring-0"
+                          />
+                          <span>%</span>
+                        </div>
+                        <div className="flex items-center gap-1 bg-white px-2 py-1 border rounded-lg">
+                          <span>Layer:</span>
+                          <input 
+                            type="number" 
+                            value={block.zIndex ?? 1} 
+                            onChange={(e) => {
+                              const val = Math.max(1, parseInt(e.target.value) || 1);
+                              updateBlockPositionInState(block.id, { zIndex: val });
+                              onSave(editedLessonRef.current);
+                            }}
+                            className="w-6 border-0 p-0 text-center font-bold text-gray-800 focus:outline-hidden focus:ring-0"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Snap align helper actions */}
+                <div className="flex flex-wrap gap-2 items-center text-xs font-sans font-semibold text-gray-550 border-b border-gray-200 pb-3 select-none">
+                  <span>Snapping Align:</span>
+                  <button type="button" onClick={() => alignActiveBlock("left")} className="px-2.5 py-1 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-all text-gray-750 shadow-3xs hover:border-gray-300">Left</button>
+                  <button type="button" onClick={() => alignActiveBlock("center")} className="px-2.5 py-1 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-all text-gray-750 shadow-3xs hover:border-gray-300">Center</button>
+                  <button type="button" onClick={() => alignActiveBlock("right")} className="px-2.5 py-1 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-all text-gray-750 shadow-3xs hover:border-gray-300">Right</button>
+                  <div className="w-px h-4 bg-gray-200 mx-1" />
+                  <button type="button" onClick={() => alignActiveBlock("top")} className="px-2.5 py-1 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-all text-gray-750 shadow-3xs hover:border-gray-300">Top</button>
+                  <button type="button" onClick={() => alignActiveBlock("middle")} className="px-2.5 py-1 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-all text-gray-750 shadow-3xs hover:border-gray-300">Middle</button>
+                  <button type="button" onClick={() => alignActiveBlock("bottom")} className="px-2.5 py-1 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-all text-gray-750 shadow-3xs hover:border-gray-300">Bottom</button>
+                  
+                  <div className="flex-1 text-right flex justify-end gap-1.5 mt-1 sm:mt-0">
+                    <button type="button" onClick={() => adjustZIndex(activeBlockId, "front")} className="px-2.5 py-1 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg text-gray-700 shadow-3xs text-[10.5px]">Bring Front</button>
+                    <button type="button" onClick={() => adjustZIndex(activeBlockId, "back")} className="px-2.5 py-1 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg text-gray-700 shadow-3xs text-[10.5px]">Send Back</button>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-3xs">
+                  {/* Inline nested blocks form rendering */}
+                  <div className="space-y-4">
+                    {activePage.blocks.map((block, idx) => {
+                      if (block.id !== activeBlockId) return null;
+                      return (
+                        <div key={block.id} className="space-y-3">
                       
                       {/* Heading Block */}
                       {block.type === BlockType.HEADING && (
@@ -2332,9 +3192,21 @@ export default function LessonEditor({
                         </div>
                       )}
 
-                    </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
+                </div>
+              </div>
+            ) : (
+              <div className="border border-dashed border-gray-200 rounded-2xl p-8 text-center space-y-2 bg-slate-50/20 font-sans mt-3">
+                <div className="h-10 w-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto">
+                  <Grid className="w-5 h-5 animate-pulse" />
+                </div>
+                <h5 className="font-bold text-gray-700 text-xs">No Element Selected</h5>
+                <p className="text-[11px] text-gray-400 max-w-sm mx-auto">
+                  Click any element on the 16:9 presentation canvas above to drag, resize, align, or customize its properties.
+                </p>
               </div>
             )}
 

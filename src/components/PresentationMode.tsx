@@ -261,37 +261,60 @@ export default function PresentationMode({
       {/* Main Slide Presentation Canvas */}
       <div 
         id="presentation-slide-canvas"
-        className="flex-1 flex items-center justify-center p-6 md:p-12 overflow-y-auto select-none"
+        className="flex-1 flex items-center justify-center p-6 md:p-12 overflow-hidden select-none"
       >
         <div 
-          className={`w-full max-w-5xl rounded-2xl shadow-xl border p-8 md:p-14 transition-all duration-300 select-text ${
+          className={`w-full max-w-6xl aspect-video rounded-3xl shadow-2xl border relative select-text overflow-hidden transition-all duration-300 ${
             isHighContrast 
               ? "bg-slate-950 border-slate-800 text-slate-100 shadow-slate-950/50" 
               : "bg-white border-gray-100 text-gray-800 shadow-gray-200/50"
           }`}
           style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: "center center" }}
         >
-          {/* Active Side Heading/Title */}
-          <div className="border-b pb-4 mb-6 md:mb-10 flex flex-col md:flex-row md:items-end justify-between gap-2">
-            <h1 className="text-2xl md:text-4xl font-sans italic font-semibold tracking-tight text-slate-900 dark:text-white">
+          {/* Active Side Heading/Title Banner (top 11%) */}
+          <div className="absolute top-0 left-0 right-0 h-[11%] border-b border-gray-150 flex items-center justify-between px-8 md:px-10 z-10 bg-slate-50/50 dark:bg-slate-900/50">
+            <h1 className="text-sm md:text-lg font-sans font-bold tracking-tight text-slate-800 dark:text-white flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0"></span>
               {activePage.title || "Untitled Slide Page"}
             </h1>
             <span className={`text-[9px] font-bold uppercase tracking-widest border px-3 py-1 rounded-full ${
-              isHighContrast ? "border-slate-800 text-slate-400" : "border-gray-250 text-gray-400"
+              isHighContrast ? "border-slate-800 text-slate-400" : "border-gray-250 text-gray-450"
             }`}>
               IC3 Course Segment
             </span>
           </div>
 
-          {/* Blocks rendering core list */}
-          <div className="space-y-6 md:space-y-8" id="active-slide-contents-block">
+          {/* Slide Absolute Components Layer Stage (y=11% to y=100%) */}
+          <div className="absolute top-[11%] left-0 right-0 bottom-0 overflow-y-auto overflow-x-hidden p-6">
             {(!activePage.blocks || activePage.blocks.length === 0) ? (
-              <p className="text-sm text-gray-400 italic text-center py-10">
+              <p className="text-sm text-gray-450 italic text-center py-20 font-sans">
                 This slide is empty. Turn off slide show and add content in the builder.
               </p>
             ) : (
-              activePage.blocks.map((block) => (
-                <div key={block.id} className="transition-all animate-fadeIn">
+              activePage.blocks.map((block, idx) => {
+                // Fetch coordinates or compute responsive defaults
+                const x = block.x !== undefined ? block.x : 10 + (idx % 2) * 45;
+                const y = block.y !== undefined ? block.y : 15 + Math.floor(idx / 2) * 26;
+                const w = block.width !== undefined ? block.width : 40;
+                const h = block.height !== undefined ? block.height : 25;
+                const z = block.zIndex !== undefined ? block.zIndex : idx + 1;
+
+                // Make sure they fit inside presentation box coordinates space
+                const cleanY = Math.max(0, Math.min(100 - h, y));
+                const cleanX = Math.max(0, Math.min(100 - w, x));
+
+                return (
+                  <div 
+                    key={block.id} 
+                    className="absolute p-4 rounded-2xl bg-white dark:bg-slate-900 border border-gray-100 shadow-3xs overflow-y-auto overflow-x-hidden transition-all animate-fadeIn text-left"
+                    style={{
+                      left: `${cleanX}%`,
+                      top: `${cleanY}%`,
+                      width: `${w}%`,
+                      height: `${h}%`,
+                      zIndex: z,
+                    }}
+                  >
                   
                   {block.type === BlockType.HEADING && (
                     <h3 className="text-xl md:text-2xl font-sans italic text-blue-600 dark:text-blue-400 border-l-4 border-blue-500 pl-3">
@@ -1184,7 +1207,8 @@ export default function PresentationMode({
                   )}
 
                 </div>
-              ))
+              );
+            })
             )}
           </div>
         </div>
