@@ -700,6 +700,497 @@ export default function LessonEditor({
     }
   };
 
+  // Helper to render inline editors directly within the selected canvas element
+  const renderCanvasBlockInlineEditor = (block: ContentBlock) => {
+    switch (block.type) {
+      case BlockType.HEADING:
+        return (
+          <div className="h-full w-full pr-1" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="text"
+              className="w-full text-xs md:text-sm font-sans font-extrabold text-blue-600 dark:text-blue-400 border-l-2 border-blue-500 pl-1 py-1 leading-tight uppercase tracking-wide bg-blue-50/50 dark:bg-slate-800/50 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 rounded"
+              placeholder="Blank Title Header"
+              value={block.headingText || ""}
+              onChange={(e) => {
+                const updatedBlocks = activePage.blocks.map((b) =>
+                  b.id === block.id ? { ...b, headingText: e.target.value } : b
+                );
+                commitCanvasBlocks(updatedBlocks);
+              }}
+            />
+          </div>
+        );
+      case BlockType.PARAGRAPH:
+        return (
+          <div className="h-full w-full pr-1" onClick={(e) => e.stopPropagation()}>
+            <textarea
+              className="w-full h-full text-[8px] sm:text-[10px] leading-snug text-gray-700 dark:text-gray-200 bg-gray-50/50 dark:bg-slate-800/50 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 rounded p-1 resize-none font-sans"
+              placeholder="Empty paragraph text modular content..."
+              value={block.paragraphText || ""}
+              onChange={(e) => {
+                const updatedBlocks = activePage.blocks.map((b) =>
+                  b.id === block.id ? { ...b, paragraphText: e.target.value } : b
+                );
+                commitCanvasBlocks(updatedBlocks);
+              }}
+            />
+          </div>
+        );
+      case BlockType.BULLET_LIST:
+        return (
+          <div className="h-full w-full pr-1 space-y-1 text-[8px] sm:text-[9.5px] font-sans" onClick={(e) => e.stopPropagation()}>
+            <div className="max-h-[80%] overflow-y-auto space-y-1">
+              {(block.listItems || []).map((bullet, idx) => (
+                <div key={idx} className="flex items-center gap-1.5 w-full">
+                  <span className="text-blue-500 shrink-0">•</span>
+                  <input
+                    type="text"
+                    className="flex-1 text-[8px] sm:text-[9.5px] text-gray-750 dark:text-gray-200 bg-gray-50/40 border border-transparent focus:border-blue-400 focus:bg-white rounded px-1 py-0.5 focus:outline-none min-w-0"
+                    value={bullet}
+                    onChange={(e) => {
+                      const nextItems = [...(block.listItems || [])];
+                      nextItems[idx] = e.target.value;
+                      const updatedBlocks = activePage.blocks.map((b) =>
+                        b.id === block.id ? { ...b, listItems: nextItems } : b
+                      );
+                      commitCanvasBlocks(updatedBlocks);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextItems = (block.listItems || []).filter((_, i) => i !== idx);
+                      const updatedBlocks = activePage.blocks.map((b) =>
+                        b.id === block.id ? { ...b, listItems: nextItems } : b
+                      );
+                      commitCanvasBlocks(updatedBlocks);
+                    }}
+                    className="text-red-500 hover:text-red-700 text-[9px] shrink-0 font-bold px-1"
+                    title="Remove item"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const nextItems = [...(block.listItems || []), "New list item row"];
+                const updatedBlocks = activePage.blocks.map((b) =>
+                  b.id === block.id ? { ...b, listItems: nextItems } : b
+                );
+                commitCanvasBlocks(updatedBlocks);
+              }}
+              className="text-[7.5px] text-blue-600 dark:text-blue-400 hover:underline px-1 py-0.5 font-medium block"
+            >
+              + Add List Bullet
+            </button>
+          </div>
+        );
+      case BlockType.IMAGE:
+        return (
+          <div className="h-full w-full rounded bg-gray-50 dark:bg-slate-800 border border-gray-150 p-1 flex flex-col justify-between overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[6px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest block">IMAGE SOURCE URL</span>
+              <input
+                type="text"
+                className="w-full text-[8px] text-blue-600 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded px-1 py-0.5 outline-none"
+                placeholder="https://..."
+                value={block.mediaUrl || ""}
+                onChange={(e) => {
+                  const updatedBlocks = activePage.blocks.map((b) =>
+                    b.id === block.id ? { ...b, mediaUrl: e.target.value } : b
+                  );
+                  commitCanvasBlocks(updatedBlocks);
+                }}
+              />
+            </div>
+            <div className="flex flex-col gap-0.5 mt-1">
+              <span className="text-[6px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest block">IMAGE CAPTION</span>
+              <input
+                type="text"
+                className="w-full text-[8px] text-gray-700 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded px-1 py-0.5 outline-none"
+                placeholder="Caption details..."
+                value={block.mediaCaption || ""}
+                onChange={(e) => {
+                  const updatedBlocks = activePage.blocks.map((b) =>
+                    b.id === block.id ? { ...b, mediaCaption: e.target.value } : b
+                  );
+                  commitCanvasBlocks(updatedBlocks);
+                }}
+              />
+            </div>
+          </div>
+        );
+      case BlockType.YOUTUBE:
+        return (
+          <div className="h-full w-full rounded bg-slate-950 p-1.5 text-white flex flex-col justify-between" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-1">
+              <Video className="w-3.5 h-3.5 text-red-500" />
+              <span className="text-[6.5px] font-bold text-red-400 uppercase tracking-widest">YOUTUBE HANDLER</span>
+            </div>
+            <div className="mt-1 flex flex-col gap-0.5">
+              <span className="text-[6px] text-gray-400">YOUTUBE LINK OR VIDEO ID</span>
+              <input
+                type="text"
+                className="w-full text-[8.5px] text-white bg-slate-800 border border-slate-700 rounded px-1 py-0.5 focus:outline-none focus:border-red-500"
+                placeholder="e.g. dQw4w9WgXcQ"
+                value={block.youtubeId || ""}
+                onChange={(e) => {
+                  let val = e.target.value;
+                  if (val.includes("youtube.com/watch?v=")) {
+                    const parts = val.split("v=");
+                    if (parts[1]) val = parts[1].split("&")[0];
+                  } else if (val.includes("youtu.be/")) {
+                    const parts = val.split("youtu.be/");
+                    if (parts[1]) val = parts[1].split("?")[0];
+                  }
+                  const updatedBlocks = activePage.blocks.map((b) =>
+                    b.id === block.id ? { ...b, youtubeId: val } : b
+                  );
+                  commitCanvasBlocks(updatedBlocks);
+                }}
+              />
+            </div>
+          </div>
+        );
+      case BlockType.DEFINITION_BOX:
+        return (
+          <div className="h-full w-full border-l-2 border-blue-600 p-1 bg-blue-50/45 dark:bg-blue-950/20 text-left overflow-hidden flex flex-col gap-1 pr-1 font-sans" onClick={(e) => e.stopPropagation()}>
+            <span className="text-[6.5px] font-bold text-blue-500 uppercase tracking-widest block">DEFINITION</span>
+            <input
+              type="text"
+              className="w-full text-[9px] font-bold text-blue-950 bg-white dark:bg-slate-900 border border-blue-100 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              placeholder="Term..."
+              value={block.definitionTerm || ""}
+              onChange={(e) => {
+                const updatedBlocks = activePage.blocks.map((b) =>
+                  b.id === block.id ? { ...b, definitionTerm: e.target.value } : b
+                );
+                commitCanvasBlocks(updatedBlocks);
+              }}
+            />
+            <textarea
+              className="w-full flex-1 min-h-[40px] text-[7.5px] text-blue-900 bg-white dark:bg-slate-900 border border-blue-100 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none"
+              placeholder="Term definition details..."
+              value={block.definitionText || ""}
+              onChange={(e) => {
+                const updatedBlocks = activePage.blocks.map((b) =>
+                  b.id === block.id ? { ...b, definitionText: e.target.value } : b
+                );
+                commitCanvasBlocks(updatedBlocks);
+              }}
+            />
+          </div>
+        );
+      case BlockType.IMPORTANT_NOTE:
+        return (
+          <div className="h-full w-full border-l-2 border-amber-500 p-1 bg-amber-50/45 dark:bg-amber-950/20 text-left overflow-hidden flex flex-col gap-1 pr-1 font-sans" onClick={(e) => e.stopPropagation()}>
+            <span className="text-[6.5px] font-bold text-amber-600 uppercase tracking-widest block">EXAM TARGET</span>
+            <textarea
+              className="w-full flex-1 min-h-[50px] text-[8.5px] text-amber-950 bg-white dark:bg-slate-900 border border-amber-100 rounded p-1 focus:outline-none focus:ring-1 focus:ring-amber-500 font-semibold resize-none"
+              placeholder="Crucial notes..."
+              value={block.noteText || ""}
+              onChange={(e) => {
+                const updatedBlocks = activePage.blocks.map((b) =>
+                  b.id === block.id ? { ...b, noteText: e.target.value } : b
+                );
+                commitCanvasBlocks(updatedBlocks);
+              }}
+            />
+          </div>
+        );
+      case BlockType.EXAMPLE_BOX:
+        return (
+          <div className="h-full w-full border-l-2 border-indigo-600 p-1 bg-indigo-50/45 dark:bg-indigo-950/20 text-left overflow-hidden flex flex-col gap-1 pr-1 font-sans" onClick={(e) => e.stopPropagation()}>
+            <span className="text-[6.5px] font-bold text-indigo-500 uppercase tracking-widest block">LAB WORK</span>
+            <input
+              type="text"
+              className="w-full text-[9px] font-bold text-indigo-950 bg-white dark:bg-slate-900 border border-indigo-100 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              placeholder="Title..."
+              value={block.exampleTitle || ""}
+              onChange={(e) => {
+                const updatedBlocks = activePage.blocks.map((b) =>
+                  b.id === block.id ? { ...b, exampleTitle: e.target.value } : b
+                );
+                commitCanvasBlocks(updatedBlocks);
+              }}
+            />
+            <textarea
+              className="w-full flex-1 text-[7px] bg-slate-900 text-emerald-400 p-1 rounded font-mono focus:outline-none resize-none"
+              placeholder="Code / details..."
+              value={block.exampleText || ""}
+              onChange={(e) => {
+                const updatedBlocks = activePage.blocks.map((b) =>
+                  b.id === block.id ? { ...b, exampleText: e.target.value } : b
+                );
+                commitCanvasBlocks(updatedBlocks);
+              }}
+            />
+          </div>
+        );
+      case BlockType.PRACTICE_ACTIVITY:
+        return (
+          <div className="h-full w-full border-l-2 border-teal-600 p-1 bg-teal-50/45 dark:bg-teal-950/20 text-left overflow-hidden flex flex-col gap-1 pr-1 font-sans" onClick={(e) => e.stopPropagation()}>
+            <span className="text-[6.5px] font-bold text-teal-650 uppercase tracking-widest block">SANDBOX LAB</span>
+            <input
+              type="text"
+              className="w-full text-[9px] font-bold text-teal-950 bg-white dark:bg-slate-900 border border-teal-100 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-teal-500"
+              placeholder="Sandbox Title..."
+              value={block.activityTitle || ""}
+              onChange={(e) => {
+                const updatedBlocks = activePage.blocks.map((b) =>
+                  b.id === block.id ? { ...b, activityTitle: e.target.value } : b
+                );
+                commitCanvasBlocks(updatedBlocks);
+              }}
+            />
+            <textarea
+              className="w-full flex-1 text-[7.5px] text-teal-900 bg-white dark:bg-slate-900 border border-teal-100 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-teal-500 resize-none font-sans"
+              placeholder="Activity instructions..."
+              value={block.activityText || ""}
+              onChange={(e) => {
+                const updatedBlocks = activePage.blocks.map((b) =>
+                  b.id === block.id ? { ...b, activityText: e.target.value } : b
+                );
+                commitCanvasBlocks(updatedBlocks);
+              }}
+            />
+          </div>
+        );
+      case BlockType.TABLE:
+        return (
+          <div className="h-full w-full overflow-hidden text-[7px] bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-700 rounded flex flex-col font-sans" onClick={(e) => e.stopPropagation()}>
+            <div className="font-bold flex border-b border-gray-150 dark:border-slate-700 bg-gray-50 dark:bg-slate-850 py-0.5 px-0.5 animate-none">
+              {(block.tableHeaders || []).slice(0, 3).map((h, hIdx) => (
+                <input
+                  key={hIdx}
+                  className="flex-1 bg-transparent px-0.5 font-bold focus:outline-none text-[7px] border-r border-gray-250 dark:border-slate-700 max-w-full"
+                  value={h}
+                  onChange={(e) => {
+                    const nextHeaders = [...(block.tableHeaders || [])];
+                    nextHeaders[hIdx] = e.target.value;
+                    const updatedBlocks = activePage.blocks.map((b) =>
+                      b.id === block.id ? { ...b, tableHeaders: nextHeaders } : b
+                    );
+                    commitCanvasBlocks(updatedBlocks);
+                  }}
+                />
+              ))}
+            </div>
+            <div className="flex-1 overflow-auto space-y-0.5 p-0.5">
+              {(block.tableRows || []).slice(0, 3).map((row, rIdx) => (
+                <div key={rIdx} className="flex border-b border-gray-100 dark:border-slate-800 pb-0.5">
+                  {row.slice(0, 3).map((cell, cIdx) => (
+                    <input
+                      key={cIdx}
+                      className="flex-1 bg-transparent px-0.5 text-gray-500 dark:text-gray-300 focus:outline-none text-[6.5px]"
+                      value={cell.value}
+                      onChange={(e) => {
+                        const nextRows = (block.tableRows || []).map((r, ri) =>
+                          ri === rIdx
+                            ? r.map((c, ci) => (ci === cIdx ? { ...c, value: e.target.value } : c))
+                            : r
+                        );
+                        const updatedBlocks = activePage.blocks.map((b) =>
+                          b.id === block.id ? { ...b, tableRows: nextRows } : b
+                        );
+                        commitCanvasBlocks(updatedBlocks);
+                      }}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      case BlockType.QUESTION_SINGLE:
+      case BlockType.QUESTION_MULTIPLE:
+        return (
+          <div className="h-full w-full p-1.5 rounded border border-blue-100 bg-blue-50/25 text-left flex flex-col justify-between font-sans" onClick={(e) => e.stopPropagation()}>
+            <div className="leading-tight space-y-1">
+              <span className="px-1 py-0.2 bg-blue-600 text-white rounded-[2px] text-[5.5px] font-bold uppercase block w-fit animate-none">
+                {block.type === BlockType.QUESTION_SINGLE ? "Single Choice" : "Multi Choice"}
+              </span>
+              <input
+                type="text"
+                className="w-full text-[8.5px] font-extrabold text-gray-900 dark:text-white bg-white dark:bg-slate-850 px-1 py-0.5 rounded border border-blue-100 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                placeholder="Question text?"
+                value={block.questionText || ""}
+                onChange={(e) => {
+                  const updatedBlocks = activePage.blocks.map((b) =>
+                    b.id === block.id ? { ...b, questionText: e.target.value } : b
+                  );
+                  commitCanvasBlocks(updatedBlocks);
+                }}
+              />
+            </div>
+            <div className="space-y-1 mt-1 overflow-hidden">
+              {(block.questionOptions || []).slice(0, 3).map((opt, oIdx) => (
+                <div key={oIdx} className="w-full text-left p-0.5 border dark:border-slate-700 rounded bg-white dark:bg-slate-800 text-[7.5px] flex items-center gap-1">
+                  <span className="text-gray-400 font-medium shrink-0">{String.fromCharCode(65 + oIdx)}.</span>
+                  <input
+                    type="text"
+                    className="flex-1 text-[7.5px] bg-transparent border-none p-0 focus:outline-none focus:ring-0 dark:text-gray-200"
+                    value={opt}
+                    onChange={(e) => {
+                      const newOpts = [...(block.questionOptions || [])];
+                      newOpts[oIdx] = e.target.value;
+                      const updatedBlocks = activePage.blocks.map((b) =>
+                        b.id === block.id ? { ...b, questionOptions: newOpts } : b
+                      );
+                      commitCanvasBlocks(updatedBlocks);
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      case BlockType.QUESTION_DRAG_DROP:
+        return (
+          <div className="h-full w-full p-1.5 rounded border border-emerald-100 bg-emerald-50/25 text-left flex flex-col justify-between font-sans" onClick={(e) => e.stopPropagation()}>
+            <div className="leading-tight space-y-1">
+              <span className="px-1 py-0.2 bg-emerald-600 text-white rounded-[2px] text-[5.5px] font-bold uppercase block w-fit animate-none">
+                Drag & Match
+              </span>
+              <input
+                type="text"
+                className="w-full text-[8.5px] font-extrabold text-gray-900 bg-white px-1 py-0.5 rounded border border-emerald-100 focus:outline-none"
+                placeholder="Match components"
+                value={block.questionText || ""}
+                onChange={(e) => {
+                  const updatedBlocks = activePage.blocks.map((b) =>
+                    b.id === block.id ? { ...b, questionText: e.target.value } : b
+                  );
+                  commitCanvasBlocks(updatedBlocks);
+                }}
+              />
+            </div>
+            <div className="flex-1 mt-1 overflow-hidden text-[7px] space-y-1">
+              {(block.dragDropPairs || []).slice(0, 2).map((pair, pIdx) => (
+                <div key={pIdx} className="flex gap-0.5 items-center bg-white p-0.5 border rounded">
+                  <input
+                    type="text"
+                    className="w-1/2 font-bold text-emerald-800 bg-transparent border-none p-0 focus:outline-none text-[6.5px]"
+                    value={pair.item}
+                    onChange={(e) => {
+                      const nextPairs = (block.dragDropPairs || []).map((p) =>
+                        p.id === pair.id ? { ...p, item: e.target.value } : p
+                      );
+                      const updatedBlocks = activePage.blocks.map((b) =>
+                        b.id === block.id ? { ...b, dragDropPairs: nextPairs } : b
+                      );
+                      commitCanvasBlocks(updatedBlocks);
+                    }}
+                  />
+                  <span className="text-gray-400 shrink-0">➔</span>
+                  <input
+                    type="text"
+                    className="w-1/2 text-gray-550 bg-transparent border-none p-0 focus:outline-none text-[6.5px]"
+                    value={pair.zone}
+                    onChange={(e) => {
+                      const nextPairs = (block.dragDropPairs || []).map((p) =>
+                        p.id === pair.id ? { ...p, zone: e.target.value } : p
+                      );
+                      const updatedBlocks = activePage.blocks.map((b) =>
+                        b.id === block.id ? { ...b, dragDropPairs: nextPairs } : b
+                      );
+                      commitCanvasBlocks(updatedBlocks);
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      case BlockType.QUESTION_HOTSPOT:
+        return (
+          <div className="h-full w-full p-1 rounded border border-amber-100 bg-amber-50/25 text-left flex flex-col justify-between font-sans" onClick={(e) => e.stopPropagation()}>
+            <div className="leading-tight space-y-0.5">
+              <span className="px-1 py-0.2 bg-amber-500 text-white rounded-[2px] text-[5.5px] font-bold uppercase block w-fit animate-none">
+                Hotspot Diagram
+              </span>
+              <input
+                type="text"
+                className="w-full text-[8px] font-extrabold text-gray-900 bg-white px-1 py-0.5 rounded focus:outline-none"
+                placeholder="Hotspot instructions"
+                value={block.questionText || ""}
+                onChange={(e) => {
+                  const updatedBlocks = activePage.blocks.map((b) =>
+                    b.id === block.id ? { ...b, questionText: e.target.value } : b
+                  );
+                  commitCanvasBlocks(updatedBlocks);
+                }}
+              />
+            </div>
+            <div className="flex-1 mt-1 flex flex-col gap-1">
+              <input
+                type="text"
+                className="text-[7.5px] bg-white border rounded px-1 py-0.5 text-gray-700 outline-none w-full"
+                placeholder="Diagram Image URL"
+                value={block.hotspotImageUrl || ""}
+                onChange={(e) => {
+                  const updatedBlocks = activePage.blocks.map((b) =>
+                    b.id === block.id ? { ...b, hotspotImageUrl: e.target.value } : b
+                  );
+                  commitCanvasBlocks(updatedBlocks);
+                }}
+              />
+            </div>
+          </div>
+        );
+      case BlockType.QUESTION_VIDEO:
+        return (
+          <div className="h-full w-full p-1.5 rounded border border-red-100 bg-red-50/25 text-left flex flex-col justify-between font-sans" onClick={(e) => e.stopPropagation()}>
+            <div className="leading-tight space-y-1">
+              <span className="px-1 py-0.2 bg-red-600 text-white rounded-[2px] text-[5.5px] font-bold uppercase block w-fit">
+                Video Question
+              </span>
+              <input
+                type="text"
+                className="w-full text-[8px] font-extrabold text-gray-900 bg-white px-1 py-0.5 rounded border border-red-100 focus:outline-none"
+                placeholder="Video question text"
+                value={block.videoQuestionText || ""}
+                onChange={(e) => {
+                  const updatedBlocks = activePage.blocks.map((b) =>
+                    b.id === block.id ? { ...b, videoQuestionText: e.target.value } : b
+                  );
+                  commitCanvasBlocks(updatedBlocks);
+                }}
+              />
+            </div>
+            <div className="mt-1 flex flex-col gap-0.5">
+              <span className="text-[6px] text-gray-400">YOUTUBE LINK OR VIDEO ID</span>
+              <input
+                type="text"
+                className="w-full text-[7.5px] text-gray-800 bg-slate-100 border rounded px-1 py-0.5 focus:outline-none"
+                placeholder="e.g. dQw4w9WgXcQ"
+                value={block.videoYoutubeId || ""}
+                onChange={(e) => {
+                  let val = e.target.value;
+                  if (val.includes("youtube.com/watch?v=")) {
+                    const parts = val.split("v=");
+                    if (parts[1]) val = parts[1].split("&")[0];
+                  } else if (val.includes("youtu.be/")) {
+                    const parts = val.split("youtu.be/");
+                    if (parts[1]) val = parts[1].split("?")[0];
+                  }
+                  const updatedBlocks = activePage.blocks.map((b) =>
+                    b.id === block.id ? { ...b, videoYoutubeId: val } : b
+                  );
+                  commitCanvasBlocks(updatedBlocks);
+                }}
+              />
+            </div>
+          </div>
+        );
+      default:
+        return <div className="text-[8px] text-gray-400">Inline Editor: {block.type}</div>;
+    }
+  };
+
   // Helper to group pages dynamically by their parent and child topics
   const topicGroups = React.useMemo(() => {
     const parentGroupsMap: Record<string, {
@@ -1971,8 +2462,16 @@ export default function LessonEditor({
                           }}
                         >
                           {/* Inner Content Component Render Preview */}
-                          <div className="flex-1 min-h-0 w-full overflow-y-auto mb-1 scrollbar-none select-none text-left pointer-events-none">
-                            {renderCanvasBlockPreview(block)}
+                          <div
+                            className={`flex-1 min-h-0 w-full overflow-y-auto mb-1 scrollbar-none text-left ${
+                              block.id === activeBlockId ? "" : "select-none pointer-events-none"
+                            }`}
+                          >
+                            {block.id === activeBlockId ? (
+                              renderCanvasBlockInlineEditor(block)
+                            ) : (
+                              renderCanvasBlockPreview(block)
+                            )}
                           </div>
 
                           {/* Quick drag/resize controller & active overlay */}
